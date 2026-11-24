@@ -13,7 +13,7 @@ export default defineConfig({
   reporter: 'list',
   use: {
     ...devices['Desktop Chrome'],
-    viewport: { width: 1440, height: 900 },
+    viewport: { width: 1366, height: 768 },
     baseURL: 'http://127.0.0.1:4173',
     channel: process.env.SMART_HOME_BROWSER_CHANNEL || undefined,
     screenshot: 'only-on-failure',
