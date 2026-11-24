@@ -1,7 +1,6 @@
 import json
 import sqlite3
 import threading
-import time
 from pathlib import Path
 from typing import Any
 
@@ -248,9 +247,7 @@ class SqliteStore:
             pending = self._get_pending_command(connection, request_id)
             if pending is None:
                 return None
-            command, deadline_epoch = pending
-            if time.time() >= deadline_epoch:
-                return None
+            command, _ = pending
 
             revision = self._next_revision(connection)
             serialized_value = json.dumps(command.value)
@@ -296,10 +293,6 @@ class SqliteStore:
                     revision,
                 ),
             )
-            if time.time() >= deadline_epoch:
-                connection.rollback()
-                return None
-
             succeeded = CommandRecord(
                 request_id=command.request_id,
                 device_id=command.device_id,

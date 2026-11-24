@@ -38,6 +38,9 @@ class CommandService:
         if plan.capability != "power" or type(plan.value) is not bool:
             raise InvalidCommandPlanError("Expected a Boolean power action.")
         if not self.store.has_writable_power(plan.device_id):
+            existing = self.store.get_command(plan.request_id)
+            if existing is not None and existing.device_id != plan.device_id:
+                raise ValueError("request_id_conflict")
             raise UnknownDeviceError(plan.device_id)
 
         deadline_epoch = time.time() + self.timeout_seconds
@@ -80,8 +83,12 @@ class CommandService:
         except TimeoutError:
             pass
         else:
-            if confirmed_value is plan.value:
-                confirmed_at = _utc_timestamp(datetime.now(UTC))
+            received_at = datetime.now(UTC)
+            if (
+                confirmed_value is plan.value
+                and received_at.timestamp() < deadline_epoch
+            ):
+                confirmed_at = _utc_timestamp(received_at)
 
         await self._finish(plan.request_id, deadline_epoch, confirmed_at)
 
@@ -99,10 +106,8 @@ class CommandService:
                 continue
 
             try:
-                if confirmed_at is not None and remaining > 0:
+                if confirmed_at is not None:
                     outcome = self.store.commit_success(request_id, confirmed_at)
-                    if outcome is None and time.time() >= deadline_epoch:
-                        continue
                 else:
                     outcome = self.store.commit_timed_out(request_id)
             except (sqlite3.OperationalError, sqlite3.IntegrityError):
@@ -110,10 +115,7 @@ class CommandService:
                     logger.warning(
                         "Command outcome write failed; retrying.", exc_info=True
                     )
-                remaining = deadline_epoch - time.time()
-                await asyncio.sleep(
-                    min(retry_delay, remaining) if remaining > 0 else retry_delay
-                )
+                await asyncio.sleep(retry_delay)
                 retry_delay = min(2 * retry_delay, 1.0)
                 continue
 

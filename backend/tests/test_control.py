@@ -28,7 +28,7 @@ class CountingLamp(SimulatedLamp):
             "success",
             "UPDATE OF status ON commands WHEN NEW.status = 'succeeded'",
             True,
-            "timed_out",
+            "succeeded",
         ),
         (
             "timeout",
@@ -131,10 +131,14 @@ def test_missing_confirmed_state_cannot_be_published_as_success(tmp_path: Path) 
         queue = await events.subscribe()
         try:
             control.accept(CommandPlan("lamp-7", "missing-state", "power", True))
-            event = await asyncio.wait_for(queue.get(), timeout=1)
-            assert event["type"] == "command.timed_out"
-            assert event["revision"] == 1
+            with pytest.raises(TimeoutError):
+                await asyncio.wait_for(queue.get(), timeout=0.1)
             assert store.get_device_state("lamp-7") is None
+            assert store.get_stream_revision() == 0
+            store.initialize()
+            event = await asyncio.wait_for(queue.get(), timeout=1)
+            assert event["type"] == "command.succeeded"
+            assert event["revision"] == 1
         finally:
             await control.shutdown()
 

@@ -45,6 +45,8 @@ The [lamp examples](lamp-scenarios.json) contain independent success and timeout
 
 The POST body contains a client-generated, nonempty `requestId`, `capability: "power"`, and a Boolean `value`. `true` requests On and `false` requests Off. Persist acceptance before replying. The command record's `value` is the requested value in every status. The map, list, and control panel all display the same confirmed value and its server-provided UTC timestamp. They can display command progress alongside it.
 
+Percent-encode the request ID for command lookup. For the IDs `.` and `..`, use `/api/devices/lamp-7/commands%2F.` and `/api/devices/lamp-7/commands%2F..` so browsers preserve the dot segment.
+
 Use a fresh ID per new intent. Repeating the same ID, target, capability, and value returns the current command record with `200 OK` and dispatches the command only once. Reusing an ID with different command fields returns `409` with `error.code: "request_id_conflict"`. Invalid command input returns `422` with `error.code: "invalid_command"`. An unknown device or command lookup returns `404` with `error.code: "device_not_found"` or `"command_not_found"`, respectively. The error body has the same `{error: {code, message}}` shape as the layout errors.
 
 ## Lamp WebSocket

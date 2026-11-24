@@ -149,6 +149,10 @@ def test_repeated_request_returns_existing_command_without_second_dispatch(
         assert conflict.status_code == 409
         assert conflict.json()["error"]["code"] == "request_id_conflict"
 
+        different_target = client.post("/api/devices/other-lamp/commands", json=request)
+        assert different_target.status_code == 409
+        assert different_target.json()["error"]["code"] == "request_id_conflict"
+
 
 def test_invalid_and_unknown_command_inputs_have_contract_errors(
     tmp_path: Path,
@@ -176,10 +180,11 @@ def test_invalid_and_unknown_command_inputs_have_contract_errors(
 
 
 @pytest.mark.parametrize(
-    ("request_id", "encoded_id"), [("on/1", "on%2F1"), ("on\n1", "on%0A1")]
+    ("request_id", "lookup_suffix"),
+    [("on/1", "/on%2F1"), ("on\n1", "/on%0A1"), (".", "%2F."), ("..", "%2F..")],
 )
 def test_command_lookup_recovers_encoded_request_ids(
-    tmp_path: Path, request_id: str, encoded_id: str
+    tmp_path: Path, request_id: str, lookup_suffix: str
 ) -> None:
     route = "/api/devices/lamp-7/commands"
     with TestClient(
@@ -189,7 +194,7 @@ def test_command_lookup_recovers_encoded_request_ids(
             route, json={"requestId": request_id, "capability": "power", "value": True}
         )
         assert accepted.status_code == 202
-        found = client.get(f"{route}/{encoded_id}")
+        found = client.get(f"{route}{lookup_suffix}")
         assert found.status_code == 200
         assert found.json()["requestId"] == request_id
 
