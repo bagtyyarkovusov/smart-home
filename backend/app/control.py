@@ -33,6 +33,7 @@ class CommandService:
         self.events = events
         self.timeout_seconds = timeout_seconds
         self._tasks: set[asyncio.Task[None]] = set()
+        self._confirmation_writes = asyncio.Lock()
 
     def accept(self, plan: CommandPlan) -> CommandAcceptance:
         if plan.capability != "power" or type(plan.value) is not bool:
@@ -90,7 +91,13 @@ class CommandService:
             ):
                 confirmed_at = _utc_timestamp(received_at)
 
-        await self._finish(plan.request_id, deadline_epoch, confirmed_at)
+        if confirmed_at is None:
+            await self._finish(plan.request_id, deadline_epoch)
+            return
+
+        # Write and publish confirmations for the simulated lamp in arrival order.
+        async with self._confirmation_writes:
+            await self._finish(plan.request_id, deadline_epoch, confirmed_at)
 
     async def _finish(
         self,

@@ -98,6 +98,57 @@ def test_terminal_write_failure_recovers_without_redispatch(
     asyncio.run(run())
 
 
+def test_later_confirmation_cannot_overtake_earlier_write_retry(tmp_path: Path) -> None:
+    store = SqliteStore(tmp_path / "smart-home.sqlite3")
+    store.initialize()
+    events = EventHub()
+    lamp = CountingLamp()
+    control = CommandService(store, lamp, events)
+
+    async def run() -> None:
+        queue = await events.subscribe()
+        with closing(sqlite3.connect(store.database_path)) as connection:
+            connection.executescript(
+                """
+                CREATE TRIGGER fail_on_write BEFORE UPDATE OF status ON commands
+                WHEN NEW.request_id = 'on' AND NEW.status = 'succeeded'
+                BEGIN SELECT RAISE(ABORT, 'on write blocked'); END;
+                """
+            )
+            try:
+                control.accept(CommandPlan("lamp-7", "on", "power", True))
+                await asyncio.sleep(0.03)
+                assert lamp.dispatches == 1
+                control.accept(CommandPlan("lamp-7", "off", "power", False))
+                with pytest.raises(TimeoutError):
+                    await asyncio.wait_for(queue.get(), timeout=0.06)
+                assert lamp.dispatches == 2
+                assert store.get_stream_revision() == 0
+
+                connection.execute("DROP TRIGGER fail_on_write")
+                on = await asyncio.wait_for(queue.get(), timeout=1)
+                off = await asyncio.wait_for(queue.get(), timeout=1)
+                assert (on["type"], on["command"]["requestId"], on["revision"]) == (
+                    "command.succeeded",
+                    "on",
+                    1,
+                )
+                assert (off["type"], off["command"]["requestId"], off["revision"]) == (
+                    "command.succeeded",
+                    "off",
+                    2,
+                )
+                state = store.get_device_state("lamp-7")
+                assert state is not None
+                assert state.value is False
+                assert state.as_dict() == off["state"]
+                assert lamp.dispatches == 2
+            finally:
+                await control.shutdown()
+
+    asyncio.run(run())
+
+
 @pytest.mark.parametrize(("capability", "value"), [("brightness", True), ("power", 1)])
 def test_control_rejects_invalid_plan_before_acceptance(
     tmp_path: Path, capability: str, value: bool
