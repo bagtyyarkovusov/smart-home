@@ -47,12 +47,46 @@ diff --git a/src/App.jsx b/src/App.jsx
 diff --git a/src/components/canvas/Canvas2D.jsx b/src/components/canvas/Canvas2D.jsx
 --- a/src/components/canvas/Canvas2D.jsx
 +++ b/src/components/canvas/Canvas2D.jsx
-@@ -35,0 +36 @@ export default function Canvas2D() {
+@@ -4,0 +5 @@ import { useUIStore } from '../../store/useUIStore';
++import { SAMPLE_LAMP } from '../../../smart-home/layout-document.mjs';
+@@ -16,0 +18 @@ const snap = (value) => Math.round(value / GRID) * GRID;
++const formatDistance = (centimeters) => `${Math.round(centimeters * 10) / 10} cm`;
+@@ -35,0 +38 @@ export default function Canvas2D() {
 +    setIsDrawingWall,
-@@ -850 +851 @@ export default function Canvas2D() {
+@@ -651,4 +654,5 @@ export default function Canvas2D() {
+-        minX = Math.min(minX, obj.start[0], obj.end[0]);
+-        minY = Math.min(minY, obj.start[1], obj.end[1]);
+-        maxX = Math.max(maxX, obj.start[0], obj.end[0]);
+-        maxY = Math.max(maxY, obj.start[1], obj.end[1]);
++        const halfThickness = (obj.thickness || 10) / 2;
++        minX = Math.min(minX, Math.min(obj.start[0], obj.end[0]) - halfThickness);
++        minY = Math.min(minY, Math.min(obj.start[1], obj.end[1]) - halfThickness);
++        maxX = Math.max(maxX, Math.max(obj.start[0], obj.end[0]) + halfThickness);
++        maxY = Math.max(maxY, Math.max(obj.start[1], obj.end[1]) + halfThickness);
+@@ -749,0 +754 @@ export default function Canvas2D() {
++    if (obj.deviceId === SAMPLE_LAMP.deviceId) return;
+@@ -776 +780,0 @@ export default function Canvas2D() {
+-  const measurementUnit = useUIStore((state) => state.measurementUnit);
+@@ -778,9 +781,0 @@ export default function Canvas2D() {
+-  const formatDistance = useCallback(
+-    (length) => {
+-      const meters = length / 100;
+-      return measurementUnit === 'imperial'
+-        ? `${(meters * 3.281).toFixed(2)}ft`
+-        : `${meters.toFixed(2)}m`;
+-    },
+-    [measurementUnit],
+-  );
+@@ -791 +786,4 @@ export default function Canvas2D() {
+-      if (e.key === ' ' && !e.repeat && document.activeElement?.tagName !== 'INPUT') {
++      const onControl = e.target instanceof Element && e.target.closest(
++        'button, input, select, textarea, summary, a[href], [contenteditable]:not([contenteditable="false"]), [role="button"]',
++      );
++      if (e.key === ' ' && !e.repeat && !onControl) {
+@@ -850 +848 @@ export default function Canvas2D() {
 -      className="absolute inset-0 w-full h-full overflow-hidden select-none"
 +      className="workspace-plan absolute inset-0 w-full h-full select-none"
-@@ -860,24 +861,9 @@ export default function Canvas2D() {
+@@ -860,24 +858,9 @@ export default function Canvas2D() {
 -      {/* ── Context hint ── */}
 -      <div
 -        style={{
@@ -86,7 +120,14 @@ diff --git a/src/components/canvas/Canvas2D.jsx b/src/components/canvas/Canvas2D
 +              : spaceHeld ? 'Drag to pan' : 'Scroll to zoom · Space + drag to pan'}
 +        </div>
 +      )}
-@@ -934,52 +920,10 @@ export default function Canvas2D() {
+@@ -886 +869,5 @@ export default function Canvas2D() {
+-      <div className="canvas-zoom-controls" data-testid="zoom-controls">
++      <div
++        className="canvas-zoom-controls"
++        data-testid="zoom-controls"
++        onPointerDown={(event) => event.stopPropagation()}
++      >
+@@ -934,52 +921,10 @@ export default function Canvas2D() {
 -      {objects.length === 0 && !isDrawingWall && !dragItem && (
 -        <div
 -          className="animate-fade-in"
@@ -149,7 +190,7 @@ diff --git a/src/components/canvas/Canvas2D.jsx b/src/components/canvas/Canvas2D
 +              className="btn btn-primary"
 +              onPointerDown={(event) => event.stopPropagation()}
 +              onClick={() => setIsDrawingWall(true)}
-@@ -987,22 +931,2 @@ export default function Canvas2D() {
+@@ -987,22 +932,2 @@ export default function Canvas2D() {
 -              Draw walls from the sidebar, then drag & drop furniture to build your floor plan
 -            </div>
 -          </div>
@@ -174,22 +215,22 @@ diff --git a/src/components/canvas/Canvas2D.jsx b/src/components/canvas/Canvas2D
 -            </div>
 +              Draw wall
 +            </button>
-@@ -1030,2 +954,2 @@ export default function Canvas2D() {
+@@ -1030,2 +955,2 @@ export default function Canvas2D() {
 -              linear-gradient(to right, rgba(148,163,184,0.05) 1px, transparent 1px),
 -              linear-gradient(to bottom, rgba(148,163,184,0.05) 1px, transparent 1px)
 +              linear-gradient(to right, var(--canvas-grid) 1px, transparent 1px),
 +              linear-gradient(to bottom, var(--canvas-grid) 1px, transparent 1px)
-@@ -1044,2 +968,2 @@ export default function Canvas2D() {
+@@ -1044,2 +969,2 @@ export default function Canvas2D() {
 -              linear-gradient(to right, rgba(148,163,184,0.08) 1px, transparent 1px),
 -              linear-gradient(to bottom, rgba(148,163,184,0.08) 1px, transparent 1px)
 +              linear-gradient(to right, #c7d3de 1px, transparent 1px),
 +              linear-gradient(to bottom, #c7d3de 1px, transparent 1px)
-@@ -1057,2 +981,2 @@ export default function Canvas2D() {
+@@ -1057,2 +982,2 @@ export default function Canvas2D() {
 -                ? { left: `${guide.pos}px`, top: '-5000px', width: '1px', height: '10000px', background: 'rgba(124,58,237,0.45)' }
 -                : { top: `${guide.pos}px`, left: '-5000px', height: '1px', width: '10000px', background: 'rgba(124,58,237,0.45)' }
 +                ? { left: `${guide.pos}px`, top: '-5000px', width: '1px', height: '10000px', background: 'var(--primary-glow)' }
 +                : { top: `${guide.pos}px`, left: '-5000px', height: '1px', width: '10000px', background: 'var(--primary-glow)' }
-@@ -1104,6 +1028 @@ export default function Canvas2D() {
+@@ -1104,6 +1029 @@ export default function Canvas2D() {
 -                    background: isSelected ? '#7C3AED' : isHovered ? '#A78BFA' : '#94A3B8',
 -                    boxShadow: isSelected
 -                      ? '0 0 16px rgba(124,58,237,0.5)'
@@ -197,55 +238,80 @@ diff --git a/src/components/canvas/Canvas2D.jsx b/src/components/canvas/Canvas2D
 -                        ? '0 0 12px rgba(167,139,250,0.35), 0 2px 6px rgba(0,0,0,0.3)'
 -                        : '0 1px 4px rgba(0,0,0,0.3)',
 +                    background: isSelected ? 'var(--primary)' : isHovered ? '#496e9d' : 'var(--text-primary)',
-@@ -1120,2 +1039,2 @@ export default function Canvas2D() {
+@@ -1120,2 +1040,2 @@ export default function Canvas2D() {
 -                      fontSize: '9px',
 -                      color: '#64748B',
 +                      fontSize: '11px',
 +                      color: 'var(--text-secondary)',
-@@ -1127 +1046 @@ export default function Canvas2D() {
+@@ -1127 +1047 @@ export default function Canvas2D() {
 -                    {(length / 100).toFixed(1)}m
-+                    {(length / 100).toFixed(1)} m
-@@ -1161,3 +1080 @@ export default function Canvas2D() {
++                    {formatDistance(length)}
+@@ -1161,3 +1081 @@ export default function Canvas2D() {
 -                  background: isSelected
 -                    ? `linear-gradient(135deg, ${itemColor}dd, ${itemColor}99)`
 -                    : `linear-gradient(135deg, ${itemColor}aa, ${itemColor}66)`,
 +                  background: `${itemColor}66`,
-@@ -1165 +1082 @@ export default function Canvas2D() {
+@@ -1165 +1083 @@ export default function Canvas2D() {
 -                    ? '2px solid #7C3AED'
 +                    ? '2px solid var(--primary)'
-@@ -1170,5 +1087 @@ export default function Canvas2D() {
+@@ -1170,5 +1088 @@ export default function Canvas2D() {
 -                  boxShadow: isSelected
 -                    ? '0 0 0 1px rgba(124,58,237,0.3), 0 0 20px rgba(124,58,237,0.25), 0 4px 12px rgba(0,0,0,0.3)'
 -                    : isHovered
 -                      ? `0 0 0 1px ${itemColor}44, 0 0 16px ${itemColor}22, 0 4px 12px rgba(0,0,0,0.3)`
 -                      : '0 2px 8px rgba(0,0,0,0.25)',
 +                  boxShadow: isSelected ? '0 0 0 1px var(--primary)' : 'none',
-@@ -1191,2 +1104 @@ export default function Canvas2D() {
+@@ -1191,2 +1105 @@ export default function Canvas2D() {
 -                    color: 'white',
 -                    textShadow: '0 1px 3px rgba(0,0,0,0.5)',
 +                    color: 'var(--text-primary)',
-@@ -1204,2 +1116 @@ export default function Canvas2D() {
+@@ -1204,2 +1117 @@ export default function Canvas2D() {
 -                      color: 'white',
 -                      textShadow: '0 1px 3px rgba(0,0,0,0.5)',
 +                      color: 'var(--text-primary)',
-@@ -1264 +1175 @@ export default function Canvas2D() {
+@@ -1246 +1158 @@ export default function Canvas2D() {
+-                  {[
++                  {obj.deviceId !== SAMPLE_LAMP.deviceId && [
+@@ -1264 +1176 @@ export default function Canvas2D() {
 -                        border: '2px solid #7C3AED',
 +                        border: '2px solid var(--primary)',
-@@ -1281 +1192 @@ export default function Canvas2D() {
+@@ -1281 +1193 @@ export default function Canvas2D() {
 -                      background: '#7C3AED',
 +                      background: 'var(--primary)',
-@@ -1295 +1206 @@ export default function Canvas2D() {
+@@ -1295 +1207 @@ export default function Canvas2D() {
 -                      background: '#7C3AED',
 +                      background: 'var(--primary)',
-@@ -1321 +1232 @@ export default function Canvas2D() {
+@@ -1321 +1233 @@ export default function Canvas2D() {
 -                background: 'rgba(124,58,237,0.4)',
 +                background: 'var(--primary-glow)',
-@@ -1337 +1248 @@ export default function Canvas2D() {
+@@ -1337 +1249 @@ export default function Canvas2D() {
 -                {(length / 100).toFixed(1)}m
-+                {(length / 100).toFixed(1)} m
-@@ -1352 +1263 @@ export default function Canvas2D() {
++                {formatDistance(length)}
+@@ -1352 +1264 @@ export default function Canvas2D() {
 -              background: 'rgba(124,58,237,0.06)',
 +              background: '#2457b810',
+@@ -1380 +1292 @@ export default function Canvas2D() {
+-                className="absolute pointer-events-none"
++                className="workspace-measure-label absolute pointer-events-none"
+@@ -1385,7 +1296,0 @@ export default function Canvas2D() {
+-                  background: 'rgba(16,185,129,0.9)',
+-                  color: 'white',
+-                  padding: '3px 10px',
+-                  borderRadius: '6px',
+-                  fontSize: '10px',
+-                  fontWeight: 600,
+-                  whiteSpace: 'nowrap',
+@@ -1421 +1326 @@ export default function Canvas2D() {
+-                className="absolute pointer-events-none"
++                className="workspace-measure-label absolute pointer-events-none"
+@@ -1426,7 +1330,0 @@ export default function Canvas2D() {
+-                  background: 'rgba(245,158,11,0.9)',
+-                  color: 'white',
+-                  padding: '3px 10px',
+-                  borderRadius: '6px',
+-                  fontSize: '10px',
+-                  fontWeight: 600,
+-                  whiteSpace: 'nowrap',
 diff --git a/src/components/canvas/Canvas3D.jsx b/src/components/canvas/Canvas3D.jsx
 --- a/src/components/canvas/Canvas3D.jsx
 +++ b/src/components/canvas/Canvas3D.jsx
@@ -676,7 +742,7 @@ diff --git a/src/components/layout/TopBar.jsx b/src/components/layout/TopBar.jsx
 +          <button type="button" className={`view-toggle-btn ${viewMode === '3D' ? 'active' : ''}`}
 +            aria-pressed={viewMode === '3D'} data-testid="view-toggle-3d" onClick={() => setViewMode('3D')}>
 +            3D view
-@@ -188,55 +114,37 @@ export default function TopBar() {
+@@ -188,55 +114,41 @@ export default function TopBar() {
 -        <div style={{ width: '1px', height: '20px', background: 'var(--border-color)', margin: '0 4px' }} />
 -
 -        <button
@@ -746,6 +812,10 @@ diff --git a/src/components/layout/TopBar.jsx b/src/components/layout/TopBar.jsx
 +              <Ellipsis size={18} aria-hidden="true" />
 +            </summary>
 +            <div className="workspace-file-menu-items">
++              <label className="workspace-file-name">
++                Project name
++                <input type="text" value={projectName} onChange={(event) => setProjectName(event.target.value)} />
++              </label>
 +              <button type="button" className="btn-icon" onClick={handleOpenClick}>
 +                <FolderOpen size={15} aria-hidden="true" /> Open file
 +              </button>
@@ -769,7 +839,7 @@ diff --git a/src/components/layout/TopBar.jsx b/src/components/layout/TopBar.jsx
 +          {saveStatus === 'error' && (
 +            <button type="button" className="btn btn-primary" onClick={handleSave}>Retry save</button>
 +          )}
-@@ -245 +153 @@ export default function TopBar() {
+@@ -245 +157 @@ export default function TopBar() {
 -    </div>
 +    </>
 diff --git a/src/index.css b/src/index.css

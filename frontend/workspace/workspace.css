@@ -107,7 +107,7 @@ input {
   position: absolute;
   right: 0;
   top: calc(100% + 6px);
-  min-width: 154px;
+  min-width: 194px;
   padding: 4px;
   background: var(--panel-bg);
   border: 1px solid var(--border-subtle);
@@ -115,6 +115,8 @@ input {
   box-shadow: var(--shadow-sm);
 }
 .workspace-file-menu-items button { justify-content: flex-start; width: 100%; white-space: nowrap; }
+.workspace-file-name { display: grid; gap: 4px; padding: 6px 8px; font-size: 0.78rem; color: var(--text-secondary); }
+.workspace-file-name input { min-width: 0; padding: 6px 8px; border: 1px solid var(--border-color); border-radius: 4px; color: var(--text-primary); }
 
 .workspace-feedback {
   display: flex;
@@ -223,6 +225,17 @@ input {
   color: var(--text-secondary);
   font-size: 0.75rem;
   pointer-events: none;
+}
+
+.workspace-measure-label {
+  padding: 3px 8px;
+  border: 1px solid var(--border-subtle);
+  border-radius: 4px;
+  background: var(--panel-bg);
+  color: var(--text-primary);
+  font-size: 0.75rem;
+  font-weight: 600;
+  white-space: nowrap;
 }
 
 .canvas-zoom-controls {
