@@ -123,8 +123,17 @@ diff --git a/src/components/canvas/Canvas3D.jsx b/src/components/canvas/Canvas3D
 diff --git a/src/components/layout/PropertiesPanel.jsx b/src/components/layout/PropertiesPanel.jsx
 --- a/src/components/layout/PropertiesPanel.jsx
 +++ b/src/components/layout/PropertiesPanel.jsx
-@@ -269,0 +270 @@
+@@ -14,0 +15 @@
++import { SAMPLE_LAMP } from '../../../smart-home/layout-document.mjs';
+@@ -85,0 +87 @@
++  const hasFixedMaterial = selectedObj.deviceId === SAMPLE_LAMP.deviceId;
+@@ -269,0 +272 @@
 +                aria-label="Rotation"
+@@ -303 +306,3 @@
+-              {['#ffffff', '#f43f5e', '#3b82f6', '#10b981', '#f59e0b', '#8b5cf6', '#ec4899', '#14b8a6'].map((color) => (
++              {hasFixedMaterial ? (
++                <p className="text-sm">Fixed by the lamp template</p>
++              ) : ['#ffffff', '#f43f5e', '#3b82f6', '#10b981', '#f59e0b', '#8b5cf6', '#ec4899', '#14b8a6'].map((color) => (
 diff --git a/src/components/layout/Sidebar.jsx b/src/components/layout/Sidebar.jsx
 --- a/src/components/layout/Sidebar.jsx
 +++ b/src/components/layout/Sidebar.jsx
@@ -186,6 +195,9 @@ diff --git a/src/components/layout/TopBar.jsx b/src/components/layout/TopBar.jsx
 +    invalid: validationMessage,
 +  }[saveStatus];
 +
+@@ -89 +100 @@
+-  return (
++  const toolbar = (
 @@ -126 +137 @@
 -            Home3D
 +            Smart Home
@@ -194,16 +206,38 @@ diff --git a/src/components/layout/TopBar.jsx b/src/components/layout/TopBar.jsx
 +          data-tooltip="Save layout"
 +          aria-label="Save layout"
 +          disabled={saveStatus === 'saving'}
-@@ -222 +235 @@
+@@ -221,2 +234,7 @@
+-
 -      {statusText && (
++    </div>
++  );
++
++  return (
++    <>
++      {toolbar}
 +      {(statusText || saveMessage) && (
-@@ -238 +251,4 @@
+@@ -225,7 +243,2 @@
+-            position: 'absolute',
+-            left: '50%',
+-            bottom: '-42px',
+-            transform: 'translateX(-50%)',
+-            background: 'rgba(11, 15, 26, 0.88)',
+-            border: '1px solid rgba(148, 163, 184, 0.12)',
+-            borderRadius: '999px',
++            background: 'var(--panel-bg)',
++            borderBottom: '1px solid var(--border-subtle)',
+@@ -236,4 +249,6 @@
+-            boxShadow: 'var(--shadow-md)',
+-            backdropFilter: 'blur(10px)',
 -            pointerEvents: 'none',
-+            pointerEvents: saveStatus === 'error' ? 'auto' : 'none',
+-            zIndex: 40,
 +            display: 'flex',
 +            alignItems: 'center',
++            justifyContent: 'center',
++            flexWrap: 'wrap',
++            textAlign: 'center',
 +            gap: '8px',
-@@ -242 +258,6 @@
+@@ -242 +257,6 @@
 -          {statusText}
 +          <span role={saveAlert ? 'alert' : 'status'}>
 +            {saveAlert ? saveMessage : statusText || saveMessage}
@@ -211,6 +245,9 @@ diff --git a/src/components/layout/TopBar.jsx b/src/components/layout/TopBar.jsx
 +          {saveStatus === 'error' && (
 +            <button className="btn btn-primary" onClick={handleSave}>Retry save</button>
 +          )}
+@@ -245 +265 @@
+-    </div>
++    </>
 diff --git a/src/store/useDesignStore.js b/src/store/useDesignStore.js
 --- a/src/store/useDesignStore.js
 +++ b/src/store/useDesignStore.js
