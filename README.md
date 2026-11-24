@@ -4,6 +4,9 @@ A software-engineering course project for one household. Residents can lay out r
 
 ## Start here
 
+- [Week 13 demo spec](https://github.com/bagtyyarkovusov/smart-home/issues/2) and [first editor ticket](https://github.com/bagtyyarkovusov/smart-home/issues/3).
+- [Team delivery workflow](docs/agents/coding-workflow.md) and [issue tracker](docs/agents/issue-tracker.md).
+
 - [Team execution plan (中文)](docs/project-plan-zh.md) covers the four roles, GitHub workflow, and weekly deliverables.
 - [Week 10 architecture](docs/architecture.md) covers the five layers, interfaces, and first end-to-end feature.
 - [Course checklist](docs/checkpoint-checklist-en.md) covers the review, mandatory features, later demonstration, and final delivery.
