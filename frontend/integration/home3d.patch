@@ -1,29 +1,25 @@
 diff --git a/index.html b/index.html
-index f7f1b0e..70c1583 100644
 --- a/index.html
 +++ b/index.html
 @@ -9 +9 @@
 -    <title>Home3D — Design Editor</title>
 +    <title>Smart Home — Home3D Layout Editor</title>
 diff --git a/src/App.jsx b/src/App.jsx
-index 6b3f1bf..d3e65d0 100644
 --- a/src/App.jsx
 +++ b/src/App.jsx
-@@ -3,0 +4,13 @@ import './index.css';
+@@ -3,0 +4 @@
 +import { useDesignStore } from './store/useDesignStore';
-+import { useUIStore } from './store/useUIStore';
-+
+@@ -4,0 +6,9 @@
 +let initialLayout;
 +function hydrateLayout() {
-+  initialLayout ??= useDesignStore.getState().loadDesign().then((layout) => {
-+    if (layout) useUIStore.getState().setProjectName(layout.projectName);
-+  }).catch((error) => {
++  initialLayout ??= useDesignStore.getState().loadDesign().catch((error) => {
 +    initialLayout = undefined;
 +    throw error;
 +  });
 +  return initialLayout;
 +}
-@@ -5,0 +19,13 @@ function App() {
++
+@@ -5,0 +16,13 @@
 +  const [attempt, setAttempt] = React.useState(0);
 +  const [status, setStatus] = React.useState('loading');
 +
@@ -37,7 +33,7 @@ index 6b3f1bf..d3e65d0 100644
 +  }, [attempt]);
 +
 +  if (status === 'ready') return <Editor />;
-@@ -7 +33,9 @@ function App() {
+@@ -7 +30,9 @@
 -    <Editor />
 +    <main style={{ padding: '2rem' }}>
 +      <h1>Smart Home</h1>
@@ -49,19 +45,54 @@ index 6b3f1bf..d3e65d0 100644
 +      )}
 +    </main>
 diff --git a/src/components/canvas/Canvas3D.jsx b/src/components/canvas/Canvas3D.jsx
-index 8aea5f7..fb9eb08 100644
 --- a/src/components/canvas/Canvas3D.jsx
 +++ b/src/components/canvas/Canvas3D.jsx
-@@ -3 +3 @@ import { Canvas, useThree } from '@react-three/fiber';
+@@ -3 +3 @@
 -import { ContactShadows, Environment, Grid, OrbitControls } from '@react-three/drei';
 +import { ContactShadows, Grid, OrbitControls } from '@react-three/drei';
-@@ -146 +146 @@ function DraggableObject({ obj, isSelected, onClick, onGrabStart, onDragStart, o
+@@ -9,0 +10,33 @@
++// Expose the live Three.js scene only in the Playwright server mode.
++function connectSceneProbe({ gl, scene, camera }) {
++  gl.domElement.inspectLayoutObject = (id) => {
++    if (gl.info.render.frame === 0) return null;
++    const object = scene.getObjectByName(`layout:${id}`);
++    if (!object) return null;
++
++    object.updateWorldMatrix(true, true);
++    const model = object.getObjectByName('floor-lamp-model');
++    const surface = model?.getObjectByName('floor-lamp-shade') ?? object;
++    const position = object.getWorldPosition(new THREE.Vector3());
++    const axis = new THREE.Vector3(1, 0, 0).transformDirection(surface.matrixWorld);
++    const bounds = new THREE.Box3();
++    const toObjectSpace = object.matrixWorld.clone().invert();
++    (model ?? object).traverse((mesh) => {
++      if (!mesh.isMesh) return;
++      if (!mesh.geometry.boundingBox) mesh.geometry.computeBoundingBox();
++      const toLocal = new THREE.Matrix4().multiplyMatrices(toObjectSpace, mesh.matrixWorld);
++      bounds.union(mesh.geometry.boundingBox.clone().applyMatrix4(toLocal));
++    });
++    const size = bounds.getSize(new THREE.Vector3());
++    const center = surface.getWorldPosition(new THREE.Vector3()).project(camera);
++    const rect = gl.domElement.getBoundingClientRect();
++
++    return {
++      position: position.toArray(),
++      axis: axis.toArray(),
++      size: size.toArray(),
++      screen: { x: (center.x + 1) * rect.width / 2, y: (1 - center.y) * rect.height / 2 },
++    };
++  };
++}
++
+@@ -145,2 +178,2 @@
+-      <mesh position={[midX, 1.5, midZ]} rotation={[0, angle, 0]} onClick={(event) => { event.stopPropagation(); onClick(obj.id); }} castShadow>
 -        <boxGeometry args={[length, 3, 0.15]} />
++      <mesh name={`layout:${obj.id}`} position={[midX, 1.5, midZ]} rotation={[0, angle, 0]} onClick={(event) => { event.stopPropagation(); onClick(obj.id); }} castShadow>
 +        <boxGeometry args={[length, 3, (obj.thickness || 10) / SCALE]} />
-@@ -160,0 +161,17 @@ function DraggableObject({ obj, isSelected, onClick, onGrabStart, onDragStart, o
+@@ -160,0 +194,17 @@
 +      case 'lamp':
 +        return (
-+          <group>
++          <group name="floor-lamp-model">
 +            <mesh position={[0, 0.025, 0]} castShadow>
 +              <boxGeometry args={[width / SCALE, 0.05, height / SCALE]} />
 +              <meshStandardMaterial color="#475569" />
@@ -70,44 +101,50 @@ index 8aea5f7..fb9eb08 100644
 +              <cylinderGeometry args={[0.025, 0.025, depth / SCALE - 0.3, 12]} />
 +              <meshStandardMaterial color="#475569" />
 +            </mesh>
-+            <mesh position={[0, depth / SCALE - 0.15, 0]} castShadow>
++            <mesh name="floor-lamp-shade" position={[0, depth / SCALE - 0.15, 0]} castShadow>
 +              <boxGeometry args={[width / SCALE, 0.3, height / SCALE]} />
 +              <meshStandardMaterial color={color} />
 +            </mesh>
 +          </group>
 +        );
-@@ -235,0 +253 @@ function DraggableObject({ obj, isSelected, onClick, onGrabStart, onDragStart, o
+@@ -233,0 +284 @@
++      name={`layout:${obj.id}`}
+@@ -235,0 +287 @@
 +      onClick={(event) => event.stopPropagation()}
-@@ -272 +289,0 @@ function SceneContent({ objects, selectedIds, selectObject, clearSelection, upda
+@@ -272 +323,0 @@
 -      <Environment preset="city" />
+@@ -341 +392,5 @@
+-      <Canvas shadows camera={{ position: [10, 10, 10], fov: 45 }}>
++      <Canvas
++        shadows
++        camera={{ position: [10, 10, 10], fov: 45 }}
++        onCreated={import.meta.env.MODE === 'editor-test' ? connectSceneProbe : undefined}
++      >
 diff --git a/src/components/layout/PropertiesPanel.jsx b/src/components/layout/PropertiesPanel.jsx
-index 5bb9b66..dd728b2 100644
 --- a/src/components/layout/PropertiesPanel.jsx
 +++ b/src/components/layout/PropertiesPanel.jsx
-@@ -269,0 +270 @@ export default function PropertiesPanel() {
+@@ -269,0 +270 @@
 +                aria-label="Rotation"
 diff --git a/src/components/layout/Sidebar.jsx b/src/components/layout/Sidebar.jsx
-index d4a3a24..815e79b 100644
 --- a/src/components/layout/Sidebar.jsx
 +++ b/src/components/layout/Sidebar.jsx
-@@ -3,0 +4 @@ import { useDesignStore } from '../../store/useDesignStore';
-+import { LAMP_DEVICE_ID } from '../../../smart-home/layout-document.mjs';
-@@ -16,0 +18,4 @@ const catalogItems = {
-+    {
-+      name: 'Sample Floor Lamp', type: 'furniture', subType: 'lamp', deviceId: LAMP_DEVICE_ID,
-+      width: 42, height: 32, depth: 150, color: '#FBBF24', icon: 'LAMP', price: 0,
-+    },
+@@ -3,0 +4 @@
++import { SAMPLE_LAMP } from '../../../smart-home/layout-document.mjs';
+@@ -16,0 +18 @@
++    SAMPLE_LAMP,
 diff --git a/src/components/layout/TopBar.jsx b/src/components/layout/TopBar.jsx
-index 1bf1f04..bda6968 100644
 --- a/src/components/layout/TopBar.jsx
 +++ b/src/components/layout/TopBar.jsx
-@@ -13 +13 @@ export default function TopBar() {
+@@ -3,0 +4 @@
++import { InvalidLayoutError } from '../../../smart-home/layout-document.mjs';
+@@ -13 +14 @@
 -  const { currency, setCurrency, objects, undo, redo, importDesign, past, future } = useDesignStore();
 +  const { currency, setCurrency, objects, undo, redo, importDesign, saveDesign, past, future } = useDesignStore();
-@@ -15,0 +16,2 @@ export default function TopBar() {
+@@ -15,0 +17,3 @@
 +  const [saveStatus, setSaveStatus] = React.useState('');
-+  const [savedDraft, setSavedDraft] = React.useState(null);
-@@ -27,15 +29,8 @@ export default function TopBar() {
++  const [savedObjects, setSavedObjects] = React.useState(null);
++  const [validationMessage, setValidationMessage] = React.useState('');
+@@ -27,15 +31,13 @@
 -  const handleSave = () => {
 -    const payload = {
 -      version: 1,
@@ -126,71 +163,89 @@ index 1bf1f04..bda6968 100644
 +  const handleSave = async () => {
 +    setSaveStatus('saving');
 +    try {
-+      await saveDesign(projectName);
-+      setSavedDraft({ objects, projectName });
++      await saveDesign();
++      setSavedObjects(objects);
 +      setSaveStatus('saved');
-+    } catch {
-+      setSaveStatus('error');
-@@ -43 +37,0 @@ export default function TopBar() {
++    } catch (error) {
++      if (error instanceof InvalidLayoutError) {
++        setValidationMessage(error.message);
++        setSaveStatus('invalid');
++      } else {
++        setSaveStatus('error');
++      }
+@@ -43 +44,0 @@
 -    setStatusText('Project saved locally');
-@@ -45,0 +40,8 @@ export default function TopBar() {
+@@ -45,0 +47,10 @@
++  const saveAlert = saveStatus === 'error' || saveStatus === 'invalid';
 +  const saveMessage = {
 +    saving: 'Saving layout…',
-+    saved: savedDraft?.objects === objects && savedDraft?.projectName === projectName
++    saved: savedObjects === objects
 +      ? 'Layout saved'
 +      : 'Unsaved edits',
-+    error: 'Could not save layout. Your edits are still here. Select Retry save.',
++    error: 'Could not save the layout. Your edits are still here.',
++    invalid: validationMessage,
 +  }[saveStatus];
 +
-@@ -126 +128 @@ export default function TopBar() {
+@@ -126 +137 @@
 -            Home3D
 +            Smart Home
-@@ -193 +195,3 @@ export default function TopBar() {
+@@ -193 +204,3 @@
 -          data-tooltip="Save"
-+          data-tooltip={saveStatus === 'error' ? 'Retry save' : 'Save layout'}
-+          aria-label={saveStatus === 'error' ? 'Retry save' : 'Save layout'}
++          data-tooltip="Save layout"
++          aria-label="Save layout"
 +          disabled={saveStatus === 'saving'}
-@@ -222 +226 @@ export default function TopBar() {
+@@ -222 +235 @@
 -      {statusText && (
 +      {(statusText || saveMessage) && (
-@@ -223,0 +228 @@ export default function TopBar() {
-+          role={saveStatus === 'error' ? 'alert' : 'status'}
-@@ -242 +247 @@ export default function TopBar() {
+@@ -238 +251,4 @@
+-            pointerEvents: 'none',
++            pointerEvents: saveStatus === 'error' ? 'auto' : 'none',
++            display: 'flex',
++            alignItems: 'center',
++            gap: '8px',
+@@ -242 +258,6 @@
 -          {statusText}
-+          {saveStatus === 'error' ? saveMessage : statusText || saveMessage}
++          <span role={saveAlert ? 'alert' : 'status'}>
++            {saveAlert ? saveMessage : statusText || saveMessage}
++          </span>
++          {saveStatus === 'error' && (
++            <button className="btn btn-primary" onClick={handleSave}>Retry save</button>
++          )}
 diff --git a/src/store/useDesignStore.js b/src/store/useDesignStore.js
-index adaae6e..f457f5c 100644
 --- a/src/store/useDesignStore.js
 +++ b/src/store/useDesignStore.js
-@@ -1,0 +2,5 @@ import { create } from 'zustand';
+@@ -1,0 +2,2 @@
 +import { createLayoutClient } from '../../smart-home/layout-client.mjs';
-+
++import { DEFAULT_ROOM_ID, fromLayoutDocument, toLayoutDocument } from '../../smart-home/layout-document.mjs';
+@@ -2,0 +5,4 @@
 +const layouts = createLayoutClient(undefined, {
 +  failFirstSave: new URLSearchParams(window.location.search).get('failSave') === '1',
 +});
-@@ -52,0 +58,5 @@ export const useDesignStore = create((set, get) => ({
++
+@@ -26,0 +33 @@
++  roomId: DEFAULT_ROOM_ID,
+@@ -52,0 +60,5 @@
 +    const existing = obj.deviceId && get().objects.find((item) => item.deviceId === obj.deviceId);
 +    if (existing) {
 +      get().selectObject(existing.id);
 +      return existing.id;
 +    }
-@@ -115,2 +124,0 @@ export const useDesignStore = create((set, get) => ({
+@@ -115,2 +126,0 @@
 -    get().beginGesture();
 -
-@@ -123 +131 @@ export const useDesignStore = create((set, get) => ({
+@@ -123 +133 @@
 -      if (!obj) continue;
 +      if (!obj || obj.deviceId) continue;
-@@ -144,0 +153,2 @@ export const useDesignStore = create((set, get) => ({
+@@ -144,0 +155,2 @@
 +    if (newObjects.length === 0) return;
 +    get().beginGesture();
-@@ -226,5 +236 @@ export const useDesignStore = create((set, get) => ({
--  saveDesign: () => {
+@@ -227,3 +239,2 @@
 -    const { objects } = get();
 -    localStorage.setItem('home3d_design', JSON.stringify({ version: 1, objects }));
 -    return true;
--  },
-+  saveDesign: (projectName) => layouts.save({ version: 1, projectName, objects: get().objects }),
-@@ -232,16 +238,4 @@ export const useDesignStore = create((set, get) => ({
++    const { objects, roomId } = get();
++    return layouts.save(toLayoutDocument(objects, roomId));
+@@ -232,16 +243,3 @@
 -  loadDesign: () => {
 -    const raw = localStorage.getItem('home3d_design');
 -    if (!raw) return false;
@@ -209,18 +264,19 @@ index adaae6e..f457f5c 100644
 -    }
 +  loadDesign: async () => {
 +    const layout = await layouts.load();
-+    if (layout) get().importDesign(layout);
-+    return layout;
++    if (layout) get().importDesign(fromLayoutDocument(layout));
+@@ -251,0 +250 @@
++      roomId: data?.roomId ?? DEFAULT_ROOM_ID,
 diff --git a/vite.config.js b/vite.config.js
-index 8b0f57b..350c875 100644
 --- a/vite.config.js
 +++ b/vite.config.js
-@@ -2,0 +3,5 @@ import react from '@vitejs/plugin-react'
+@@ -2,0 +3,2 @@
 +import { fileURLToPath } from 'node:url'
 +import { mockLayoutPlugin } from './smart-home/mock-layout.mjs'
-+
+@@ -3,0 +6,3 @@
 +const layoutFile = process.env.SMART_HOME_MOCK_LAYOUT_FILE ??
 +  fileURLToPath(new URL('./.mock/layout.json', import.meta.url))
-@@ -6 +11 @@ export default defineConfig({
++
+@@ -6 +11 @@
 -  plugins: [react()],
 +  plugins: [react(), mockLayoutPlugin(layoutFile)],

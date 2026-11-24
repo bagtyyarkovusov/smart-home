@@ -1,0 +1,11 @@
+{
+  "layoutNotFound": {
+    "error": { "code": "layout_not_found", "message": "No layout has been saved." }
+  },
+  "invalidLayout": {
+    "error": { "code": "invalid_layout", "message": "Expected layout version 1." }
+  },
+  "layoutSaveFailed": {
+    "error": { "code": "layout_save_failed", "message": "Could not save the layout. Try again." }
+  }
+}

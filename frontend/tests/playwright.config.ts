@@ -20,9 +20,9 @@ export default defineConfig({
     launchOptions: { args: ['--enable-unsafe-swiftshader'] },
   },
   webServer: {
-    command: 'npm run dev -- --host 127.0.0.1 --port 4173 --strictPort',
+    command: 'npm run dev -- --mode editor-test --host 127.0.0.1 --port 4173 --strictPort',
     cwd: fileURLToPath(new URL('..', import.meta.url)),
-    url: 'http://127.0.0.1:4173/api/layouts/demo-room',
+    url: 'http://127.0.0.1:4173/',
     env: { SMART_HOME_MOCK_LAYOUT_FILE: join(dataDir, 'layout.json') },
   },
 })

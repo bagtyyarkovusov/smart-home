@@ -43,7 +43,7 @@ for file in index.html package.json package-lock.json vite.config.js eslint.conf
   cp "$source/$file" "$app/"
 done
 cp integration/*.mjs "$app/smart-home/"
-cp tests/editor.spec.ts tests/playwright.config.ts "$app/tests/"
+cp tests/editor.spec.ts tests/playwright.config.ts ../docs/contracts/week-13/layout.v1.json "$app/tests/"
 patch_file="$PWD/integration/home3d.patch"
 (
   # Otherwise git apply discovers the enclosing checkout and skips paths outside

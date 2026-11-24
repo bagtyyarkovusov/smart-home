@@ -13,7 +13,7 @@ The instructor approved Home3D for this course project. Starting reference revis
 - Connect `useDesignStore` save/load to the backend. The upstream implementation saves `{version, objects}` in browser `localStorage`. Use the server as the authority for saved layouts and retain unsaved edits in the browser store.
 - Feed the furniture sidebar with templates from the backend. Link each controllable placed item to a stable `deviceId`. A generic representation and metadata-driven controls cover new types that use existing capability kinds.
 - Keep live device state in a separate browser store keyed by `deviceId`. The map, list, and controls read from that same projection. Geometry and undo history stay in the editor store.
-- Preserve the editor's coordinate conventions at the adapter boundary. The audited 3D renderer divides position and dimensions by 100. Verify axis mapping, rotation, and scale with a round-trip fixture before fixing the backend format.
+- The [Week 13 interface contract](contracts/week-13/README.md) defines the shared layout fixture, Home3D coordinate mapping, and lamp HTTP and WebSocket messages.
 
 ## Five layers and deployment
 
@@ -63,7 +63,7 @@ At runtime, a device report returns through the Device interface Control called.
 | Control → Data | Atomically record a confirmed change and append its history entry. Maintain command outcomes separately from device state. |
 | Presentation → Browser | Fetch a snapshot and subscribe to command outcomes and confirmed-state events. State updates include device ID, capability, value, server timestamp, and revision. |
 
-An item template describes dimensions and its illustration. A device type declares its capabilities. Capability metadata defines the key, value type, range or allowed values, unit, and writability. Layout instances reference their templates and may link to a device instance with a stable ID. A versioned floor-plan document stores room geometry, walls, item positions, and rotation. The proposed persistence adapter converts between the editor's coordinates and documented physical units. Existing supported capability kinds render through metadata-driven controls.
+An item template describes dimensions and its illustration. A device type declares its capabilities. Capability metadata defines the key, value type, range or allowed values, unit, and writability. Layout instances reference their templates and may link to a device instance with a stable ID. A versioned floor-plan document stores room geometry, walls, item positions, and rotation. The Week 13 layout uses the editor's centimeter coordinates and clockwise degrees. Existing supported capability kinds render through metadata-driven controls.
 
 ## First end-to-end feature
 

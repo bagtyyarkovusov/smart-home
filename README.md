@@ -29,17 +29,17 @@ then open **Furniture** and drag **Sample Floor Lamp** onto the plan. Drag it ag
 to move it, adjust **Rotation** in the properties panel, then use **Save layout**.
 Reload the page and switch between **2D Plan** and **3D View**.
 
-The editor saves and reloads through `PUT` and `GET /api/layouts/demo-room`. An
-empty mock returns `null`; saving writes `frontend/.home3d/.mock/layout.json`.
-Plan coordinates and dimensions are in centimetres, with x/y mapped to 3D X/Z
-in metres. Rotation is stored in degrees. The placed item keeps its Home3D object
-ID and its separate `deviceId: "lamp-7"` link. This mock serves the local layout
-demo while the shared layout API is developed.
+The editor saves and reloads through `PUT` and `GET /api/layouts/week-13`. An
+empty mock returns HTTP 404 and opens a blank plan. Saving writes
+`frontend/.home3d/.mock/layout.json`. The [Week 13 layout contract](docs/contracts/week-13/README.md)
+stores one wall and one sample floor lamp. Plan coordinates are in centimetres,
+with x/y mapped to 3D X/Z in metres. Rotation is stored in degrees. The placed
+lamp keeps its object ID and separate `deviceId: "lamp-7"` link.
 
 To reproduce a save error, open [the failure demo](http://127.0.0.1:5173/?failSave=1),
-make a layout edit and select **Save layout**. The first save in that page session
-returns HTTP 503. The edit stays visible. Select **Retry save**, then reload to
-verify the edit was saved.
+make a layout edit and select **Save layout**. The first valid save in that page
+session returns HTTP 500 with `layout_save_failed`. The draft stays visible.
+Select **Retry save**, then reload to verify the edit was saved.
 
 ### Verify
 
@@ -52,8 +52,8 @@ npm run build
 SMART_HOME_BROWSER_CHANNEL=chrome npm run test:e2e -- --config tests/playwright.config.ts
 ```
 
-The Playwright test uses an isolated blank layout and prints the actual statuses and
-saved geometry. Set `SMART_HOME_EVIDENCE_DIR` to an absolute output directory to
+The Playwright test starts with isolated storage, loads the committed fixture,
+and checks the reopened Three.js wall and lamp transforms. It prints the HTTP statuses. Set `SMART_HOME_EVIDENCE_DIR` to an absolute output directory to
 capture the failed save, the saved plan and both reopened views. Omit
 `SMART_HOME_BROWSER_CHANNEL` if Playwright Chromium is already installed.
 
