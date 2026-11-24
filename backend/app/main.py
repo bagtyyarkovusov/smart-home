@@ -1,0 +1,210 @@
+import os
+import sqlite3
+from contextlib import asynccontextmanager
+from pathlib import Path
+
+from fastapi import FastAPI
+from fastapi.exceptions import RequestValidationError
+from fastapi.responses import JSONResponse
+from starlette.websockets import WebSocket, WebSocketDisconnect
+
+from app.control import CommandService, UnknownDeviceError
+from app.device import SimulatedLamp
+from app.domain import CommandIntent
+from app.models import LayoutDocument, PowerCommandRequest
+from app.persistence import SqliteStore
+from app.realtime import EventHub
+from app.strategy import ManualCommandStrategy
+
+LAYOUT_ID = "week-13"
+
+
+def create_app(
+    database_path: Path | str | None = None,
+    layout_store: SqliteStore | None = None,
+    simulator_mode: str | None = None,
+    command_timeout_seconds: float | None = None,
+) -> FastAPI:
+    resolved_database_path = Path(
+        database_path
+        or os.environ.get(
+            "SMART_HOME_DB_PATH",
+            Path(__file__).parent.parent / "data" / "smart-home.sqlite3",
+        )
+    )
+    store = layout_store or SqliteStore(resolved_database_path)
+    store.initialize()
+    events = EventHub()
+    resolved_timeout = command_timeout_seconds
+    if resolved_timeout is None:
+        resolved_timeout = float(
+            os.environ.get("SMART_HOME_COMMAND_TIMEOUT_SECONDS", "1.0")
+        )
+    device = SimulatedLamp(
+        mode=simulator_mode or os.environ.get("SMART_HOME_SIMULATOR_MODE", "success")
+    )
+    commands = CommandService(
+        store=store,
+        device=device,
+        events=events,
+        timeout_seconds=resolved_timeout,
+    )
+    strategy = ManualCommandStrategy()
+
+    @asynccontextmanager
+    async def lifespan(_application: FastAPI):
+        await commands.recover_pending()
+        try:
+            yield
+        finally:
+            await commands.shutdown()
+
+    application = FastAPI(title="Smart Home API", lifespan=lifespan)
+
+    @application.exception_handler(RequestValidationError)
+    async def validation_error_handler(request, _error):
+        is_command = "/devices/" in request.url.path
+        return JSONResponse(
+            status_code=422,
+            content={
+                "error": {
+                    "code": "invalid_command" if is_command else "invalid_layout",
+                    "message": (
+                        "Expected a valid power command."
+                        if is_command
+                        else "Expected a valid Week 13 layout."
+                    ),
+                }
+            },
+        )
+
+    @application.get(f"/api/layouts/{LAYOUT_ID}", response_model=None)
+    def get_layout() -> LayoutDocument | JSONResponse:
+        layout = store.get(LAYOUT_ID)
+        if layout is None:
+            return JSONResponse(
+                status_code=404,
+                content={
+                    "error": {
+                        "code": "layout_not_found",
+                        "message": "No layout has been saved.",
+                    }
+                },
+            )
+        return LayoutDocument.model_validate(layout)
+
+    @application.put(f"/api/layouts/{LAYOUT_ID}", response_model=LayoutDocument)
+    def put_layout(document: LayoutDocument) -> LayoutDocument | JSONResponse:
+        try:
+            store.save(LAYOUT_ID, document.model_dump(mode="json"))
+        except sqlite3.Error:
+            return JSONResponse(
+                status_code=500,
+                content={
+                    "error": {
+                        "code": "layout_save_failed",
+                        "message": "Could not save the layout. Try again.",
+                    }
+                },
+            )
+        return document
+
+    @application.get("/api/devices/{device_id}/state", response_model=None)
+    def get_lamp_state(device_id: str) -> dict[str, object] | JSONResponse:
+        state = store.get_device_state(device_id)
+        if state is None:
+            return JSONResponse(
+                status_code=404,
+                content={
+                    "error": {
+                        "code": "device_not_found",
+                        "message": "The requested device does not exist.",
+                    }
+                },
+            )
+        return state.as_dict()
+
+    @application.post("/api/devices/{device_id}/commands", response_model=None)
+    async def post_command(
+        device_id: str,
+        command_request: PowerCommandRequest,
+    ) -> dict[str, object] | JSONResponse:
+        plan = strategy.plan_power(
+            device_id,
+            CommandIntent(
+                request_id=command_request.requestId,
+                capability=command_request.capability,
+                value=command_request.value,
+            ),
+        )
+        try:
+            acceptance = commands.accept(plan)
+        except UnknownDeviceError:
+            return JSONResponse(
+                status_code=404,
+                content={
+                    "error": {
+                        "code": "device_not_found",
+                        "message": "The requested device does not exist.",
+                    }
+                },
+            )
+        except ValueError:
+            return JSONResponse(
+                status_code=409,
+                content={
+                    "error": {
+                        "code": "request_id_conflict",
+                        "message": "The request ID is already used by another command.",
+                    }
+                },
+            )
+        return JSONResponse(
+            status_code=202 if acceptance.created else 200,
+            content=acceptance.command.as_dict(),
+        )
+
+    @application.get("/api/devices/{device_id}/commands/{request_id}")
+    def get_command(device_id: str, request_id: str) -> JSONResponse:
+        command = store.get_command(request_id)
+        if command is None or command.device_id != device_id:
+            return JSONResponse(
+                status_code=404,
+                content={
+                    "error": {
+                        "code": "command_not_found",
+                        "message": "The requested command does not exist.",
+                    }
+                },
+            )
+        return JSONResponse(status_code=200, content=command.as_dict())
+
+    @application.websocket("/api/ws")
+    async def websocket_endpoint(websocket: WebSocket) -> None:
+        await websocket.accept()
+        queue = await events.subscribe()
+        state = store.get_device_state("lamp-7")
+        if state is None:
+            await websocket.close(code=1011)
+            await events.unsubscribe(queue)
+            return
+
+        await websocket.send_json(
+            {
+                "type": "snapshot",
+                "revision": store.get_stream_revision(),
+                "state": state.as_dict(),
+            }
+        )
+        try:
+            while True:
+                await websocket.send_json(await queue.get())
+        except WebSocketDisconnect:
+            pass
+        finally:
+            await events.unsubscribe(queue)
+
+    return application
+
+
+app = create_app()
