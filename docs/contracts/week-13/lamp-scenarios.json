@@ -1,0 +1,77 @@
+{
+  "initialState": {
+    "deviceId": "lamp-7",
+    "capability": "power",
+    "value": false,
+    "updatedAt": "2026-11-24T08:00:00.000Z",
+    "revision": 0
+  },
+  "success": {
+    "request": {
+      "requestId": "power-on-1",
+      "capability": "power",
+      "value": true
+    },
+    "accepted": {
+      "requestId": "power-on-1",
+      "deviceId": "lamp-7",
+      "capability": "power",
+      "value": true,
+      "status": "pending"
+    },
+    "event": {
+      "type": "command.succeeded",
+      "revision": 1,
+      "command": {
+        "requestId": "power-on-1",
+        "deviceId": "lamp-7",
+        "capability": "power",
+        "value": true,
+        "status": "succeeded"
+      },
+      "state": {
+        "deviceId": "lamp-7",
+        "capability": "power",
+        "value": true,
+        "updatedAt": "2026-11-24T08:00:00.240Z",
+        "revision": 1
+      }
+    }
+  },
+  "timeout": {
+    "request": {
+      "requestId": "power-on-2",
+      "capability": "power",
+      "value": true
+    },
+    "accepted": {
+      "requestId": "power-on-2",
+      "deviceId": "lamp-7",
+      "capability": "power",
+      "value": true,
+      "status": "pending"
+    },
+    "event": {
+      "type": "command.timed_out",
+      "revision": 1,
+      "command": {
+        "requestId": "power-on-2",
+        "deviceId": "lamp-7",
+        "capability": "power",
+        "value": true,
+        "status": "timed_out"
+      }
+    },
+    "reconnect": {
+      "type": "snapshot",
+      "revision": 1,
+      "state": {
+        "deviceId": "lamp-7",
+        "capability": "power",
+        "value": false,
+        "updatedAt": "2026-11-24T08:00:00.000Z",
+        "revision": 0
+      }
+    }
+  }
+}

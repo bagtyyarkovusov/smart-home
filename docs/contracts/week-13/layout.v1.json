@@ -1,0 +1,25 @@
+{
+  "version": 1,
+  "id": "week-13",
+  "rooms": [
+    {
+      "id": "room-1",
+      "walls": [
+        {
+          "id": "wall-1",
+          "start": [20, 40],
+          "end": [320, 440]
+        }
+      ],
+      "items": [
+        {
+          "id": "item-1",
+          "templateId": "floor-lamp",
+          "deviceId": "lamp-7",
+          "position": [120, 80],
+          "rotationDeg": 30
+        }
+      ]
+    }
+  ]
+}
