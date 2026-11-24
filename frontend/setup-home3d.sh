@@ -43,6 +43,10 @@ for file in index.html package.json package-lock.json vite.config.js eslint.conf
   cp "$source/$file" "$app/"
 done
 cp integration/*.mjs "$app/smart-home/"
+cp workspace/WorkspaceTools.jsx "$app/src/components/layout/"
+cp workspace/workspace.css "$app/src/"
+mkdir -p "$app/public/fonts"
+cp workspace/fonts/* "$app/public/fonts/"
 cp tests/editor.spec.ts tests/playwright.config.ts ../docs/contracts/week-13/layout.v1.json "$app/tests/"
 patch_file="$PWD/integration/home3d.patch"
 (

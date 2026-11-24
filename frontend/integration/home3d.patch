@@ -7,9 +7,10 @@ diff --git a/index.html b/index.html
 diff --git a/src/App.jsx b/src/App.jsx
 --- a/src/App.jsx
 +++ b/src/App.jsx
-@@ -3,0 +4 @@
+@@ -3,0 +4,11 @@ import './index.css';
++import './workspace.css';
 +import { useDesignStore } from './store/useDesignStore';
-@@ -4,0 +6,9 @@
++
 +let initialLayout;
 +function hydrateLayout() {
 +  initialLayout ??= useDesignStore.getState().loadDesign().catch((error) => {
@@ -18,8 +19,7 @@ diff --git a/src/App.jsx b/src/App.jsx
 +  });
 +  return initialLayout;
 +}
-+
-@@ -5,0 +16,13 @@
+@@ -5,0 +17,13 @@ function App() {
 +  const [attempt, setAttempt] = React.useState(0);
 +  const [status, setStatus] = React.useState('loading');
 +
@@ -33,7 +33,7 @@ diff --git a/src/App.jsx b/src/App.jsx
 +  }, [attempt]);
 +
 +  if (status === 'ready') return <Editor />;
-@@ -7 +30,9 @@
+@@ -7 +31,9 @@ function App() {
 -    <Editor />
 +    <main style={{ padding: '2rem' }}>
 +      <h1>Smart Home</h1>
@@ -44,13 +44,215 @@ diff --git a/src/App.jsx b/src/App.jsx
 +        </>
 +      )}
 +    </main>
+diff --git a/src/components/canvas/Canvas2D.jsx b/src/components/canvas/Canvas2D.jsx
+--- a/src/components/canvas/Canvas2D.jsx
++++ b/src/components/canvas/Canvas2D.jsx
+@@ -35,0 +36 @@ export default function Canvas2D() {
++    setIsDrawingWall,
+@@ -850 +851 @@ export default function Canvas2D() {
+-      className="absolute inset-0 w-full h-full overflow-hidden select-none"
++      className="workspace-plan absolute inset-0 w-full h-full select-none"
+@@ -860,24 +861,9 @@ export default function Canvas2D() {
+-      {/* ── Context hint ── */}
+-      <div
+-        style={{
+-          position: 'absolute',
+-          right: '14px',
+-          top: '14px',
+-          zIndex: 30,
+-          padding: '8px 10px',
+-          borderRadius: '10px',
+-          background: isDrawingWall ? 'rgba(124, 58, 237, 0.16)' : 'rgba(11, 15, 26, 0.66)',
+-          border: isDrawingWall ? '1px solid rgba(124, 58, 237, 0.35)' : '1px solid rgba(148, 163, 184, 0.12)',
+-          color: 'var(--text-primary)',
+-          backdropFilter: 'blur(10px)',
+-          boxShadow: 'var(--shadow-sm)',
+-          fontSize: '0.74rem',
+-          fontWeight: 600,
+-        }}
+-      >
+-        {isDrawingWall
+-          ? 'Click to set start, click again to place wall'
+-          : spaceHeld
+-            ? '⎵ Drag to pan'
+-            : 'Scroll to zoom • Space + drag to pan'}
+-      </div>
++      {(objects.length > 0 || isDrawingWall || isMeasuring) && (
++        <div className="workspace-hint">
++          {isDrawingWall
++            ? (drawingWallStart ? 'Choose the wall endpoint' : 'Choose the wall start')
++            : isMeasuring
++              ? 'Choose two points to measure'
++              : spaceHeld ? 'Drag to pan' : 'Scroll to zoom · Space + drag to pan'}
++        </div>
++      )}
+@@ -934,52 +920,10 @@ export default function Canvas2D() {
+-      {objects.length === 0 && !isDrawingWall && !dragItem && (
+-        <div
+-          className="animate-fade-in"
+-          style={{
+-            position: 'absolute',
+-            top: '50%',
+-            left: '50%',
+-            transform: 'translate(-50%, -50%)',
+-            zIndex: 25,
+-            textAlign: 'center',
+-            pointerEvents: 'none',
+-            display: 'flex',
+-            flexDirection: 'column',
+-            alignItems: 'center',
+-            gap: '16px',
+-          }}
+-        >
+-          <div
+-            style={{
+-              width: '64px',
+-              height: '64px',
+-              borderRadius: '20px',
+-              background: 'linear-gradient(135deg, rgba(124, 58, 237, 0.12), rgba(99, 102, 241, 0.06))',
+-              border: '1px solid rgba(124, 58, 237, 0.2)',
+-              display: 'flex',
+-              alignItems: 'center',
+-              justifyContent: 'center',
+-              fontSize: '1.5rem',
+-              animation: 'pulseGlow 3s ease-in-out infinite',
+-            }}
+-          >
+-            HOME
+-          </div>
+-          <div>
+-            <div
+-              style={{
+-                fontSize: '1.1rem',
+-                fontWeight: 700,
+-                color: 'var(--text-primary)',
+-                letterSpacing: '-0.02em',
+-                marginBottom: '6px',
+-              }}
+-            >
+-              Start Designing
+-            </div>
+-            <div
+-              style={{
+-                fontSize: '0.78rem',
+-                color: 'var(--text-secondary)',
+-                lineHeight: 1.6,
+-                maxWidth: '280px',
+-              }}
++      {objects.length === 0 && !isDrawingWall && !isMeasuring && !dragItem && (
++        <div className="workspace-start">
++          <div className="workspace-start-content">
++            <h2>Draw your first wall</h2>
++            <p>Pick two points on the plan, then add a floor lamp.</p>
++            <button
++              type="button"
++              className="btn btn-primary"
++              onPointerDown={(event) => event.stopPropagation()}
++              onClick={() => setIsDrawingWall(true)}
+@@ -987,22 +931,2 @@ export default function Canvas2D() {
+-              Draw walls from the sidebar, then drag & drop furniture to build your floor plan
+-            </div>
+-          </div>
+-          <div
+-            style={{
+-              display: 'flex',
+-              gap: '24px',
+-              marginTop: '4px',
+-            }}
+-          >
+-            <div style={{ display: 'flex', alignItems: 'center', gap: '6px', fontSize: '0.68rem', color: 'var(--text-muted)', fontWeight: 600 }}>
+-              <span style={{ width: '20px', height: '20px', borderRadius: '6px', background: 'rgba(124, 58, 237, 0.1)', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '10px' }}>1</span>
+-              Draw Walls
+-            </div>
+-            <div style={{ display: 'flex', alignItems: 'center', gap: '6px', fontSize: '0.68rem', color: 'var(--text-muted)', fontWeight: 600 }}>
+-              <span style={{ width: '20px', height: '20px', borderRadius: '6px', background: 'rgba(124, 58, 237, 0.1)', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '10px' }}>2</span>
+-              Add Furniture
+-            </div>
+-            <div style={{ display: 'flex', alignItems: 'center', gap: '6px', fontSize: '0.68rem', color: 'var(--text-muted)', fontWeight: 600 }}>
+-              <span style={{ width: '20px', height: '20px', borderRadius: '6px', background: 'rgba(124, 58, 237, 0.1)', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '10px' }}>3</span>
+-              View in 3D
+-            </div>
++              Draw wall
++            </button>
+@@ -1030,2 +954,2 @@ export default function Canvas2D() {
+-              linear-gradient(to right, rgba(148,163,184,0.05) 1px, transparent 1px),
+-              linear-gradient(to bottom, rgba(148,163,184,0.05) 1px, transparent 1px)
++              linear-gradient(to right, var(--canvas-grid) 1px, transparent 1px),
++              linear-gradient(to bottom, var(--canvas-grid) 1px, transparent 1px)
+@@ -1044,2 +968,2 @@ export default function Canvas2D() {
+-              linear-gradient(to right, rgba(148,163,184,0.08) 1px, transparent 1px),
+-              linear-gradient(to bottom, rgba(148,163,184,0.08) 1px, transparent 1px)
++              linear-gradient(to right, #c7d3de 1px, transparent 1px),
++              linear-gradient(to bottom, #c7d3de 1px, transparent 1px)
+@@ -1057,2 +981,2 @@ export default function Canvas2D() {
+-                ? { left: `${guide.pos}px`, top: '-5000px', width: '1px', height: '10000px', background: 'rgba(124,58,237,0.45)' }
+-                : { top: `${guide.pos}px`, left: '-5000px', height: '1px', width: '10000px', background: 'rgba(124,58,237,0.45)' }
++                ? { left: `${guide.pos}px`, top: '-5000px', width: '1px', height: '10000px', background: 'var(--primary-glow)' }
++                : { top: `${guide.pos}px`, left: '-5000px', height: '1px', width: '10000px', background: 'var(--primary-glow)' }
+@@ -1104,6 +1028 @@ export default function Canvas2D() {
+-                    background: isSelected ? '#7C3AED' : isHovered ? '#A78BFA' : '#94A3B8',
+-                    boxShadow: isSelected
+-                      ? '0 0 16px rgba(124,58,237,0.5)'
+-                      : isHovered
+-                        ? '0 0 12px rgba(167,139,250,0.35), 0 2px 6px rgba(0,0,0,0.3)'
+-                        : '0 1px 4px rgba(0,0,0,0.3)',
++                    background: isSelected ? 'var(--primary)' : isHovered ? '#496e9d' : 'var(--text-primary)',
+@@ -1120,2 +1039,2 @@ export default function Canvas2D() {
+-                      fontSize: '9px',
+-                      color: '#64748B',
++                      fontSize: '11px',
++                      color: 'var(--text-secondary)',
+@@ -1127 +1046 @@ export default function Canvas2D() {
+-                    {(length / 100).toFixed(1)}m
++                    {(length / 100).toFixed(1)} m
+@@ -1161,3 +1080 @@ export default function Canvas2D() {
+-                  background: isSelected
+-                    ? `linear-gradient(135deg, ${itemColor}dd, ${itemColor}99)`
+-                    : `linear-gradient(135deg, ${itemColor}aa, ${itemColor}66)`,
++                  background: `${itemColor}66`,
+@@ -1165 +1082 @@ export default function Canvas2D() {
+-                    ? '2px solid #7C3AED'
++                    ? '2px solid var(--primary)'
+@@ -1170,5 +1087 @@ export default function Canvas2D() {
+-                  boxShadow: isSelected
+-                    ? '0 0 0 1px rgba(124,58,237,0.3), 0 0 20px rgba(124,58,237,0.25), 0 4px 12px rgba(0,0,0,0.3)'
+-                    : isHovered
+-                      ? `0 0 0 1px ${itemColor}44, 0 0 16px ${itemColor}22, 0 4px 12px rgba(0,0,0,0.3)`
+-                      : '0 2px 8px rgba(0,0,0,0.25)',
++                  boxShadow: isSelected ? '0 0 0 1px var(--primary)' : 'none',
+@@ -1191,2 +1104 @@ export default function Canvas2D() {
+-                    color: 'white',
+-                    textShadow: '0 1px 3px rgba(0,0,0,0.5)',
++                    color: 'var(--text-primary)',
+@@ -1204,2 +1116 @@ export default function Canvas2D() {
+-                      color: 'white',
+-                      textShadow: '0 1px 3px rgba(0,0,0,0.5)',
++                      color: 'var(--text-primary)',
+@@ -1264 +1175 @@ export default function Canvas2D() {
+-                        border: '2px solid #7C3AED',
++                        border: '2px solid var(--primary)',
+@@ -1281 +1192 @@ export default function Canvas2D() {
+-                      background: '#7C3AED',
++                      background: 'var(--primary)',
+@@ -1295 +1206 @@ export default function Canvas2D() {
+-                      background: '#7C3AED',
++                      background: 'var(--primary)',
+@@ -1321 +1232 @@ export default function Canvas2D() {
+-                background: 'rgba(124,58,237,0.4)',
++                background: 'var(--primary-glow)',
+@@ -1337 +1248 @@ export default function Canvas2D() {
+-                {(length / 100).toFixed(1)}m
++                {(length / 100).toFixed(1)} m
+@@ -1352 +1263 @@ export default function Canvas2D() {
+-              background: 'rgba(124,58,237,0.06)',
++              background: '#2457b810',
 diff --git a/src/components/canvas/Canvas3D.jsx b/src/components/canvas/Canvas3D.jsx
 --- a/src/components/canvas/Canvas3D.jsx
 +++ b/src/components/canvas/Canvas3D.jsx
-@@ -3 +3 @@
+@@ -3 +3 @@ import { Canvas, useThree } from '@react-three/fiber';
 -import { ContactShadows, Environment, Grid, OrbitControls } from '@react-three/drei';
-+import { ContactShadows, Grid, OrbitControls } from '@react-three/drei';
-@@ -9,0 +10,33 @@
++import { ContactShadows, Edges, Grid, OrbitControls } from '@react-three/drei';
+@@ -9,0 +10,33 @@ const SCALE = 100;
 +// Expose the live Three.js scene only in the Playwright server mode.
 +function connectSceneProbe({ gl, scene, camera }) {
 +  gl.domElement.inspectLayoutObject = (id) => {
@@ -84,12 +286,15 @@ diff --git a/src/components/canvas/Canvas3D.jsx b/src/components/canvas/Canvas3D
 +  };
 +}
 +
-@@ -145,2 +178,2 @@
+@@ -145,3 +178,4 @@ function DraggableObject({ obj, isSelected, onClick, onGrabStart, onDragStart, o
 -      <mesh position={[midX, 1.5, midZ]} rotation={[0, angle, 0]} onClick={(event) => { event.stopPropagation(); onClick(obj.id); }} castShadow>
 -        <boxGeometry args={[length, 3, 0.15]} />
+-        <meshStandardMaterial color={isSelected ? '#7C3AED' : '#E2E8F0'} roughness={0.9} />
 +      <mesh name={`layout:${obj.id}`} position={[midX, 1.5, midZ]} rotation={[0, angle, 0]} onClick={(event) => { event.stopPropagation(); onClick(obj.id); }} castShadow>
 +        <boxGeometry args={[length, 3, (obj.thickness || 10) / SCALE]} />
-@@ -160,0 +194,17 @@
++        <meshStandardMaterial color="#CBD7E1" roughness={0.9} />
++        {isSelected && <Edges color="#2457B8" />}
+@@ -160,0 +195,17 @@ function DraggableObject({ obj, isSelected, onClick, onGrabStart, onDragStart, o
 +      case 'lamp':
 +        return (
 +          <group name="floor-lamp-model">
@@ -107,33 +312,191 @@ diff --git a/src/components/canvas/Canvas3D.jsx b/src/components/canvas/Canvas3D
 +            </mesh>
 +          </group>
 +        );
-@@ -233,0 +284 @@
+@@ -233,0 +285 @@ function DraggableObject({ obj, isSelected, onClick, onGrabStart, onDragStart, o
 +      name={`layout:${obj.id}`}
-@@ -235,0 +287 @@
+@@ -235,0 +288 @@ function DraggableObject({ obj, isSelected, onClick, onGrabStart, onDragStart, o
 +      onClick={(event) => event.stopPropagation()}
-@@ -272 +323,0 @@
+@@ -245 +298 @@ function DraggableObject({ obj, isSelected, onClick, onGrabStart, onDragStart, o
+-          <meshBasicMaterial color="#7C3AED" wireframe transparent opacity={0.35} />
++          <meshBasicMaterial color="#2457B8" wireframe transparent opacity={0.35} />
+@@ -272 +324,0 @@ function SceneContent({ objects, selectedIds, selectObject, clearSelection, upda
 -      <Environment preset="city" />
-@@ -341 +392,5 @@
+@@ -304 +356 @@ function SceneContent({ objects, selectedIds, selectObject, clearSelection, upda
+-        <meshStandardMaterial color="#F1F5F9" roughness={0.95} />
++        <meshStandardMaterial color="#E8DBCA" roughness={0.95} />
+@@ -311,2 +363,2 @@ function SceneContent({ objects, selectedIds, selectObject, clearSelection, upda
+-        sectionColor="#CBD5E1"
+-        cellColor="#E2E8F0"
++        sectionColor="#BDB8AE"
++        cellColor="#D5CEC3"
+@@ -341,3 +393,7 @@ export default function Canvas3D() {
 -      <Canvas shadows camera={{ position: [10, 10, 10], fov: 45 }}>
+-        <color attach="background" args={['#0B0F1A']} />
+-        <fog attach="fog" args={['#0B0F1A', 30, 60]} />
 +      <Canvas
 +        shadows
 +        camera={{ position: [10, 10, 10], fov: 45 }}
 +        onCreated={import.meta.env.MODE === 'editor-test' ? connectSceneProbe : undefined}
 +      >
++        <color attach="background" args={['#EEF2F5']} />
++        <fog attach="fog" args={['#EEF2F5', 30, 60]} />
 diff --git a/src/components/layout/PropertiesPanel.jsx b/src/components/layout/PropertiesPanel.jsx
 --- a/src/components/layout/PropertiesPanel.jsx
 +++ b/src/components/layout/PropertiesPanel.jsx
-@@ -14,0 +15 @@
+@@ -4,3 +3,0 @@ import {
+-  ChevronUp,
+-  ChevronDown,
+-  Copy,
+@@ -11,2 +7,0 @@ import {
+-  DollarSign,
+-  Box,
+@@ -15,3 +10 @@ import { useDesignStore } from '../../store/useDesignStore';
+-
+-const formatItemCost = (amount, currency) =>
+-  currency === 'INR' ? `Rs ${amount.toLocaleString('en-IN')}` : `$${Math.round(amount / 80)}`;
 +import { SAMPLE_LAMP } from '../../../smart-home/layout-document.mjs';
-@@ -85,0 +87 @@
+@@ -26,4 +18,0 @@ export default function PropertiesPanel() {
+-    currency,
+-    bringForward,
+-    sendBackward,
+-    duplicateSelected,
+@@ -36,17 +25,4 @@ export default function PropertiesPanel() {
+-      <div
+-        className="properties-panel"
+-        style={{
+-          background: 'var(--panel-bg)',
+-          display: 'flex',
+-          alignItems: 'center',
+-          justifyContent: 'center',
+-        }}
+-      >
+-        <div style={{ textAlign: 'center', color: 'var(--text-muted)', fontSize: '0.82rem', lineHeight: 1.6 }}>
+-          <div className="empty-state-icon" style={{ margin: '0 auto 16px' }}>
+-            <Box size={22} />
+-          </div>
+-          <div style={{ fontWeight: 600, color: 'var(--text-secondary)', marginBottom: '4px' }}>No Selection</div>
+-          <div style={{ fontSize: '0.72rem' }}>Click an object to inspect properties</div>
+-        </div>
+-      </div>
++      <aside className="properties-panel inspector-empty" aria-label="Properties">
++        <h2 className="panel-title">Properties</h2>
++        <p>Select a wall or lamp to see its properties.</p>
++      </aside>
+@@ -57,2 +32,0 @@ export default function PropertiesPanel() {
+-    const totalPrice = selectedObjects.reduce((sum, obj) => sum + (obj.price || 0), 0);
+-
+@@ -60 +34 @@ export default function PropertiesPanel() {
+-      <div className="properties-panel animate-fade-in" style={{ background: 'var(--panel-bg)' }}>
++      <aside className="properties-panel" aria-label="Properties">
+@@ -64,4 +37,0 @@ export default function PropertiesPanel() {
+-        <div className="prop-section">
+-          <div className="prop-label">Total Cost</div>
+-          <div className="prop-value-large">{formatItemCost(totalPrice, currency)}</div>
+-        </div>
+@@ -69,3 +38,0 @@ export default function PropertiesPanel() {
+-          <button className="btn btn-primary" style={{ flex: 1, borderRadius: 'var(--radius-md)' }} onClick={duplicateSelected}>
+-            <Copy size={14} /> Duplicate
+-          </button>
+@@ -80 +47 @@ export default function PropertiesPanel() {
+-      </div>
++      </aside>
+@@ -85,0 +53 @@ export default function PropertiesPanel() {
 +  const hasFixedMaterial = selectedObj.deviceId === SAMPLE_LAMP.deviceId;
-@@ -269,0 +272 @@
+@@ -94 +62 @@ export default function PropertiesPanel() {
+-    <div className="properties-panel animate-fade-in" style={{ background: 'var(--panel-bg)' }}>
++    <aside className="properties-panel" aria-label="Properties">
+@@ -107 +75 @@ export default function PropertiesPanel() {
+-            {selectedObj.name || selectedObj.type}
++            {hasFixedMaterial ? 'Floor lamp' : selectedObj.name || selectedObj.type}
+@@ -109,4 +77 @@ export default function PropertiesPanel() {
+-          <span style={{ fontSize: '0.68rem', color: 'var(--text-muted)', fontWeight: 500, marginTop: '2px', display: 'block' }}>
+-            {selectedObj.type}
+-            {selectedObj.subType ? ` | ${selectedObj.subType}` : ''}
+-          </span>
++
+@@ -115,10 +80 @@ export default function PropertiesPanel() {
+-          <button className="btn-icon tooltip-container" data-tooltip="Duplicate" onClick={duplicateSelected}>
+-            <Copy size={14} />
+-          </button>
+-          <button className="btn-icon tooltip-container" data-tooltip="Bring Forward" onClick={() => bringForward(selectedObj.id)}>
+-            <ChevronUp size={14} />
+-          </button>
+-          <button className="btn-icon tooltip-container" data-tooltip="Send Backward" onClick={() => sendBackward(selectedObj.id)}>
+-            <ChevronDown size={14} />
+-          </button>
+-          <button className="btn-icon" style={{ color: 'var(--danger)' }} onClick={() => removeObject(selectedObj.id)}>
++          <button className="btn-icon" aria-label="Delete selected object" style={{ color: 'var(--danger)' }} onClick={() => removeObject(selectedObj.id)}>
+@@ -138 +94 @@ export default function PropertiesPanel() {
+-                Dimensions
++                Dimensions (cm)
+@@ -144 +100 @@ export default function PropertiesPanel() {
+-                <input type="number" className="prop-input" value={selectedObj.width || 0} onChange={(event) => handleNumberChange('width', event.target.value)} />
++                <input type="number" className="prop-input" aria-label="Width in centimeters" readOnly={hasFixedMaterial} value={selectedObj.width || 0} onChange={(event) => handleNumberChange('width', event.target.value)} />
+@@ -147,2 +103,2 @@ export default function PropertiesPanel() {
+-                <label className="prop-sub-label">Height</label>
+-                <input type="number" className="prop-input" value={selectedObj.height || 0} onChange={(event) => handleNumberChange('height', event.target.value)} />
++                <label className="prop-sub-label">Plan depth</label>
++                <input type="number" className="prop-input" aria-label="Plan depth in centimeters" readOnly={hasFixedMaterial} value={selectedObj.height || 0} onChange={(event) => handleNumberChange('height', event.target.value)} />
+@@ -151,2 +107,2 @@ export default function PropertiesPanel() {
+-                <label className="prop-sub-label">Depth</label>
+-                <input type="number" className="prop-input" value={selectedObj.depth || 0} onChange={(event) => handleNumberChange('depth', event.target.value)} />
++                <label className="prop-sub-label">Height</label>
++                <input type="number" className="prop-input" aria-label="Height in centimeters" readOnly={hasFixedMaterial} value={selectedObj.depth || 0} onChange={(event) => handleNumberChange('depth', event.target.value)} />
+@@ -201 +157 @@ export default function PropertiesPanel() {
+-              Position
++              Position (cm)
+@@ -204 +160 @@ export default function PropertiesPanel() {
+-          <div className="prop-grid-3">
++          <div className={isWall ? "prop-grid-3" : "workspace-position"}>
+@@ -209 +165 @@ export default function PropertiesPanel() {
+-                  <input type="number" className="prop-input" value={selectedObj.start?.[0] || 0} readOnly />
++                  <input type="number" className="prop-input" aria-label="Wall start X in centimeters" value={selectedObj.start?.[0] || 0} readOnly />
+@@ -213 +169 @@ export default function PropertiesPanel() {
+-                  <input type="number" className="prop-input" value={selectedObj.start?.[1] || 0} readOnly />
++                  <input type="number" className="prop-input" aria-label="Wall start Y in centimeters" value={selectedObj.start?.[1] || 0} readOnly />
+@@ -219,0 +176 @@ export default function PropertiesPanel() {
++                    aria-label="Wall length in centimeters"
+@@ -238 +195 @@ export default function PropertiesPanel() {
+-                  <input type="number" className="prop-input" value={Math.round(selectedObj.x || 0)} onChange={(event) => handleNumberChange('x', event.target.value)} />
++                  <input type="number" className="prop-input" aria-label="X position in centimeters" value={Math.round(selectedObj.x || 0)} onChange={(event) => handleNumberChange('x', event.target.value)} />
+@@ -242,5 +199 @@ export default function PropertiesPanel() {
+-                  <input type="number" className="prop-input" value={Math.round(selectedObj.y || 0)} onChange={(event) => handleNumberChange('y', event.target.value)} />
+-                </div>
+-                <div>
+-                  <label className="prop-sub-label">Z</label>
+-                  <input type="number" className="prop-input" value={0} readOnly />
++                  <input type="number" className="prop-input" aria-label="Y position in centimeters" value={Math.round(selectedObj.y || 0)} onChange={(event) => handleNumberChange('y', event.target.value)} />
+@@ -269,0 +223 @@ export default function PropertiesPanel() {
 +                aria-label="Rotation"
-@@ -303 +306,3 @@
+@@ -281 +235 @@ export default function PropertiesPanel() {
+-                  background: 'rgba(124,58,237,0.08)',
++                  background: 'var(--panel-surface)',
+@@ -303 +257,3 @@ export default function PropertiesPanel() {
 -              {['#ffffff', '#f43f5e', '#3b82f6', '#10b981', '#f59e0b', '#8b5cf6', '#ec4899', '#14b8a6'].map((color) => (
 +              {hasFixedMaterial ? (
 +                <p className="text-sm">Fixed by the lamp template</p>
 +              ) : ['#ffffff', '#f43f5e', '#3b82f6', '#10b981', '#f59e0b', '#8b5cf6', '#ec4899', '#14b8a6'].map((color) => (
+@@ -322,16 +278 @@ export default function PropertiesPanel() {
+-        <div className="prop-section" style={{ borderBottom: 'none' }}>
+-          <div className="prop-section-header">
+-            <div className="prop-section-icon">
+-              <DollarSign size={13} />
+-            </div>
+-            <div className="prop-label" style={{ marginBottom: 0 }}>
+-              Cost
+-            </div>
+-          </div>
+-          <div className="cost-card">
+-            <div style={{ fontSize: '0.72rem', color: 'var(--text-muted)', marginBottom: '6px', fontWeight: 500 }}>
+-              Estimated Cost
+-            </div>
+-            <div className="prop-value-large">{formatItemCost(selectedObj.price || 0, currency)}</div>
+-          </div>
+-        </div>
++
+@@ -339 +280 @@ export default function PropertiesPanel() {
+-    </div>
++    </aside>
 diff --git a/src/components/layout/Sidebar.jsx b/src/components/layout/Sidebar.jsx
 --- a/src/components/layout/Sidebar.jsx
 +++ b/src/components/layout/Sidebar.jsx
@@ -144,16 +507,25 @@ diff --git a/src/components/layout/Sidebar.jsx b/src/components/layout/Sidebar.j
 diff --git a/src/components/layout/TopBar.jsx b/src/components/layout/TopBar.jsx
 --- a/src/components/layout/TopBar.jsx
 +++ b/src/components/layout/TopBar.jsx
-@@ -3,0 +4 @@
+@@ -4,6 +4,2 @@ import { useDesignStore } from '../../store/useDesignStore';
+-import { Undo, Redo, Download, Save, Wand2, FolderOpen, Sparkles } from 'lucide-react';
+-
+-const formatTotalCost = (amount, currency) =>
+-  currency === 'INR'
+-    ? `Rs ${amount.toLocaleString('en-IN')}`
+-    : `$${(amount / 80).toLocaleString('en-US', { maximumFractionDigits: 0 })}`;
 +import { InvalidLayoutError } from '../../../smart-home/layout-document.mjs';
-@@ -13 +14 @@
++import { Undo, Redo, Download, Save, House, FolderOpen, Ellipsis } from 'lucide-react';
+@@ -13 +9 @@ export default function TopBar() {
 -  const { currency, setCurrency, objects, undo, redo, importDesign, past, future } = useDesignStore();
-+  const { currency, setCurrency, objects, undo, redo, importDesign, saveDesign, past, future } = useDesignStore();
-@@ -15,0 +17,3 @@
++  const { objects, undo, redo, importDesign, saveDesign, past, future } = useDesignStore();
+@@ -15,0 +12,3 @@ export default function TopBar() {
 +  const [saveStatus, setSaveStatus] = React.useState('');
-+  const [savedObjects, setSavedObjects] = React.useState(null);
-+  const [validationMessage, setValidationMessage] = React.useState('');
-@@ -27,15 +31,13 @@
++  const [savedObjects, setSavedObjects] = React.useState(objects);
++  const [invalidSave, setInvalidSave] = React.useState(null);
+@@ -17 +15,0 @@ export default function TopBar() {
+-  const totalCost = objects.reduce((sum, obj) => sum + (obj.price || 0), 0);
+@@ -27,15 +25,13 @@ export default function TopBar() {
 -  const handleSave = () => {
 -    const payload = {
 -      version: 1,
@@ -177,46 +549,171 @@ diff --git a/src/components/layout/TopBar.jsx b/src/components/layout/TopBar.jsx
 +      setSaveStatus('saved');
 +    } catch (error) {
 +      if (error instanceof InvalidLayoutError) {
-+        setValidationMessage(error.message);
++        setInvalidSave({ message: error.message, objects });
 +        setSaveStatus('invalid');
 +      } else {
 +        setSaveStatus('error');
 +      }
-@@ -43 +44,0 @@
+@@ -43 +38,0 @@ export default function TopBar() {
 -    setStatusText('Project saved locally');
-@@ -45,0 +47,10 @@
-+  const saveAlert = saveStatus === 'error' || saveStatus === 'invalid';
+@@ -45,0 +41,11 @@ export default function TopBar() {
++  const hasInvalidDraft = saveStatus === 'invalid' && invalidSave?.objects === objects;
++  const saveAlert = saveStatus === 'error' || hasInvalidDraft;
 +  const saveMessage = {
 +    saving: 'Saving layout…',
 +    saved: savedObjects === objects
 +      ? 'Layout saved'
 +      : 'Unsaved edits',
 +    error: 'Could not save the layout. Your edits are still here.',
-+    invalid: validationMessage,
-+  }[saveStatus];
++    invalid: hasInvalidDraft ? invalidSave.message : undefined,
++  }[saveStatus] ?? (savedObjects !== objects ? 'Unsaved edits' : objects.length ? 'Layout saved' : 'New layout');
 +
-@@ -89 +100 @@
--  return (
-+  const toolbar = (
-@@ -126 +137 @@
+@@ -90,38 +96,5 @@ export default function TopBar() {
+-    <div className="topbar glass">
+-      <input
+-        ref={fileInputRef}
+-        type="file"
+-        accept=".json,application/json"
+-        onChange={handleOpenFile}
+-        style={{ display: 'none' }}
+-      />
+-
+-      <div style={{ display: 'flex', alignItems: 'center', gap: '14px', minWidth: 0 }}>
+-        <div style={{ display: 'flex', alignItems: 'center', gap: '8px', whiteSpace: 'nowrap' }}>
+-          <div
+-            style={{
+-              width: '28px',
+-              height: '28px',
+-              borderRadius: 'var(--radius-sm)',
+-              background: 'var(--primary-gradient)',
+-              display: 'flex',
+-              alignItems: 'center',
+-              justifyContent: 'center',
+-              boxShadow: '0 2px 8px var(--primary-glow)',
+-            }}
+-          >
+-            <Sparkles size={14} color="white" />
+-          </div>
+-          <span
+-            style={{
+-              fontWeight: 800,
+-              fontSize: '1rem',
+-              letterSpacing: '-0.03em',
+-              background: 'var(--primary-gradient)',
+-              WebkitBackgroundClip: 'text',
+-              WebkitTextFillColor: 'transparent',
+-              backgroundClip: 'text',
+-            }}
+-          >
 -            Home3D
-+            Smart Home
-@@ -193 +204,3 @@
+-          </span>
++    <>
++      <header className="workspace-header">
++        <div className="workspace-brand">
++          <House size={21} aria-hidden="true" />
++          <span>Smart Home</span>
+@@ -130,55 +103,8 @@ export default function TopBar() {
+-        <div style={{ width: '1px', height: '20px', background: 'var(--border-color)' }} />
+-
+-        <input
+-          type="text"
+-          value={projectName}
+-          onChange={(event) => setProjectName(event.target.value)}
+-          className="project-name-input"
+-        />
+-      </div>
+-
+-      <div className="view-toggle">
+-        <button
+-          className={`view-toggle-btn ${viewMode === '2D' ? 'active' : ''}`}
+-          onClick={() => setViewMode('2D')}
+-          data-testid="view-toggle-2d"
+-        >
+-          2D Plan
+-        </button>
+-        <button
+-          className={`view-toggle-btn ${viewMode === '3D' ? 'active' : ''}`}
+-          onClick={() => setViewMode('3D')}
+-          data-testid="view-toggle-3d"
+-        >
+-          3D View
+-        </button>
+-      </div>
+-
+-      <div style={{ display: 'flex', alignItems: 'center', gap: '4px', flexShrink: 0 }}>
+-        <button
+-          className="btn-icon tooltip-container"
+-          data-tooltip="Undo"
+-          onClick={undo}
+-          disabled={!canUndo}
+-          style={{ opacity: canUndo ? 1 : 0.25, cursor: canUndo ? 'pointer' : 'not-allowed' }}
+-        >
+-          <Undo size={15} />
+-        </button>
+-        <button
+-          className="btn-icon tooltip-container"
+-          data-tooltip="Redo"
+-          onClick={redo}
+-          disabled={!canRedo}
+-          style={{ opacity: canRedo ? 1 : 0.25, cursor: canRedo ? 'pointer' : 'not-allowed' }}
+-        >
+-          <Redo size={15} />
+-        </button>
+-
+-        <div style={{ width: '1px', height: '20px', background: 'var(--border-color)', margin: '0 4px' }} />
+-
+-        <div className="cost-badge">
+-          <span style={{ fontSize: '0.8rem', fontWeight: 700, whiteSpace: 'nowrap', letterSpacing: '-0.01em' }}>
+-            {formatTotalCost(totalCost, currency)}
+-          </span>
+-          <button className="currency-toggle" onClick={() => setCurrency(currency === 'INR' ? 'USD' : 'INR')}>
+-            {currency}
++        <div className="view-toggle" role="group" aria-label="Layout view">
++          <button type="button" className={`view-toggle-btn ${viewMode === '2D' ? 'active' : ''}`}
++            aria-pressed={viewMode === '2D'} data-testid="view-toggle-2d" onClick={() => setViewMode('2D')}>
++            2D plan
++          </button>
++          <button type="button" className={`view-toggle-btn ${viewMode === '3D' ? 'active' : ''}`}
++            aria-pressed={viewMode === '3D'} data-testid="view-toggle-3d" onClick={() => setViewMode('3D')}>
++            3D view
+@@ -188,55 +114,37 @@ export default function TopBar() {
+-        <div style={{ width: '1px', height: '20px', background: 'var(--border-color)', margin: '0 4px' }} />
+-
+-        <button
+-          id="save-btn"
+-          className="btn-icon tooltip-container"
 -          data-tooltip="Save"
-+          data-tooltip="Save layout"
-+          aria-label="Save layout"
-+          disabled={saveStatus === 'saving'}
-@@ -221,2 +234,7 @@
+-          onClick={handleSave}
+-          data-testid="save-project"
+-        >
+-          <Save size={15} />
+-        </button>
+-        <button className="btn-icon tooltip-container" data-tooltip="Open Project File" onClick={handleOpenClick}>
+-          <FolderOpen size={15} />
+-        </button>
+-        <button className="btn-icon tooltip-container" data-tooltip="Export JSON" onClick={handleExport}>
+-          <Download size={15} />
+-        </button>
+-
+-        <button
+-          className="btn btn-primary btn-glow"
+-          style={{
+-            padding: '7px 16px',
+-            fontSize: '0.73rem',
+-            marginLeft: '6px',
+-            borderRadius: 'var(--radius-full)',
+-            background: 'var(--primary-gradient)',
+-            letterSpacing: '0.01em',
+-          }}
+-          onClick={() => setStatusText('AI suggestions are not available yet')}
+-        >
+-          <Wand2 size={13} /> AI Suggest
+-        </button>
+-      </div>
 -
 -      {statusText && (
-+    </div>
-+  );
-+
-+  return (
-+    <>
-+      {toolbar}
-+      {(statusText || saveMessage) && (
-@@ -225,7 +243,2 @@
+-        <div
+-          style={{
 -            position: 'absolute',
 -            left: '50%',
 -            bottom: '-42px',
@@ -224,30 +721,144 @@ diff --git a/src/components/layout/TopBar.jsx b/src/components/layout/TopBar.jsx
 -            background: 'rgba(11, 15, 26, 0.88)',
 -            border: '1px solid rgba(148, 163, 184, 0.12)',
 -            borderRadius: '999px',
-+            background: 'var(--panel-bg)',
-+            borderBottom: '1px solid var(--border-subtle)',
-@@ -236,4 +249,6 @@
+-            padding: '8px 12px',
+-            color: 'var(--text-primary)',
+-            fontSize: '0.74rem',
+-            fontWeight: 600,
 -            boxShadow: 'var(--shadow-md)',
 -            backdropFilter: 'blur(10px)',
 -            pointerEvents: 'none',
 -            zIndex: 40,
-+            display: 'flex',
-+            alignItems: 'center',
-+            justifyContent: 'center',
-+            flexWrap: 'wrap',
-+            textAlign: 'center',
-+            gap: '8px',
-@@ -242 +257,6 @@
+-          }}
+-        >
 -          {statusText}
++        <div className="workspace-actions">
++          <button type="button" className="btn-icon" aria-label="Undo" title="Undo"
++            onClick={undo} disabled={!canUndo}>
++            <Undo size={17} aria-hidden="true" />
++          </button>
++          <button type="button" className="btn-icon" aria-label="Redo" title="Redo"
++            onClick={redo} disabled={!canRedo}>
++            <Redo size={17} aria-hidden="true" />
++          </button>
++          <details className="workspace-file-menu">
++            <summary className="btn-icon" aria-label="Layout files" title="Layout files">
++              <Ellipsis size={18} aria-hidden="true" />
++            </summary>
++            <div className="workspace-file-menu-items">
++              <button type="button" className="btn-icon" onClick={handleOpenClick}>
++                <FolderOpen size={15} aria-hidden="true" /> Open file
++              </button>
++              <button type="button" className="btn-icon" onClick={handleExport}>
++                <Download size={15} aria-hidden="true" /> Export JSON
++              </button>
++            </div>
++          </details>
++          <input ref={fileInputRef} type="file" accept=".json,application/json" onChange={handleOpenFile} hidden />
++          <button type="button" id="save-btn" className="btn btn-primary workspace-save"
++            disabled={saveStatus === 'saving'} onClick={handleSave} data-testid="save-project">
++            <Save size={16} aria-hidden="true" /> Save layout
++          </button>
++        </div>
++      </header>
++      {(statusText || saveMessage) && (
++        <div className="workspace-feedback">
 +          <span role={saveAlert ? 'alert' : 'status'}>
 +            {saveAlert ? saveMessage : statusText || saveMessage}
 +          </span>
 +          {saveStatus === 'error' && (
-+            <button className="btn btn-primary" onClick={handleSave}>Retry save</button>
++            <button type="button" className="btn btn-primary" onClick={handleSave}>Retry save</button>
 +          )}
-@@ -245 +265 @@
+@@ -245 +153 @@ export default function TopBar() {
 -    </div>
 +    </>
+diff --git a/src/index.css b/src/index.css
+--- a/src/index.css
++++ b/src/index.css
+@@ -1,2 +0,0 @@
+-@import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&display=swap');
+-
+diff --git a/src/pages/Editor.jsx b/src/pages/Editor.jsx
+--- a/src/pages/Editor.jsx
++++ b/src/pages/Editor.jsx
+@@ -3 +3,3 @@ import TopBar from '../components/layout/TopBar';
+-import Sidebar from '../components/layout/Sidebar';
++import WorkspaceTools from '../components/layout/WorkspaceTools';
++import { LampFloor } from 'lucide-react';
++import { SAMPLE_LAMP } from '../../smart-home/layout-document.mjs';
+@@ -5 +6,0 @@ import PropertiesPanel from '../components/layout/PropertiesPanel';
+-import BottomBar from '../components/layout/BottomBar';
+@@ -13 +14 @@ export default function Editor() {
+-  const { viewMode, dragItem, clearPaletteDrag, pan, zoom, isDrawingWall, cancelActiveTool } = useUIStore();
++  const { viewMode, setViewMode, dragItem, clearPaletteDrag, pan, zoom, cancelActiveTool } = useUIStore();
+@@ -14,0 +16 @@ export default function Editor() {
++  const canvasRef = React.useRef(null);
+@@ -28 +30 @@ export default function Editor() {
+-      const canvasEl = document.getElementById('canvas-container-inner');
++      const canvasEl = canvasRef.current;
+@@ -120,0 +123,13 @@ export default function Editor() {
++  const addLampAtCenter = () => {
++    const canvas = canvasRef.current;
++    if (!canvas) return;
++    cancelActiveTool();
++    setViewMode('2D');
++    const { x, y } = resolveConstraints(
++      (canvas.clientWidth / 2 - pan.x) / zoom,
++      (canvas.clientHeight / 2 - pan.y) / zoom,
++      { objectType: SAMPLE_LAMP.type, objects: useDesignStore.getState().objects, gridSize: 20 },
++    );
++    addObject({ ...SAMPLE_LAMP, x, y, rotation: 0 });
++  };
++
+@@ -127,25 +142 @@ export default function Editor() {
+-          <Sidebar />
+-
+-          <div className="canvas-container relative" id="canvas-container-inner">
+-            {viewMode === '3D' && isDrawingWall && (
+-              <div
+-                style={{
+-                  position: 'absolute',
+-                  top: '14px',
+-                  left: '50%',
+-                  transform: 'translateX(-50%)',
+-                  zIndex: 30,
+-                  padding: '10px 14px',
+-                  borderRadius: '999px',
+-                  background: 'rgba(124, 58, 237, 0.16)',
+-                  border: '1px solid rgba(124, 58, 237, 0.3)',
+-                  color: 'white',
+-                  backdropFilter: 'blur(14px)',
+-                  boxShadow: 'var(--shadow-md)',
+-                  fontSize: '0.78rem',
+-                  fontWeight: 600,
+-                }}
+-              >
+-                Wall drawing happens in 2D plan view
+-              </div>
+-            )}
++          <WorkspaceTools onAddLamp={addLampAtCenter} />
+@@ -152,0 +144 @@ export default function Editor() {
++          <main className="canvas-container relative" id="canvas-container-inner" ref={canvasRef} aria-label="Floor plan">
+@@ -154,3 +146 @@ export default function Editor() {
+-
+-            <BottomBar />
+-          </div>
++          </main>
+@@ -170,2 +160,3 @@ export default function Editor() {
+-            background: `${dragItem.color || '#7C3AED'}15`,
+-            borderColor: `${dragItem.color || '#7C3AED'}88`,
++            background: 'var(--panel-bg)',
++            borderColor: 'var(--primary)',
++            color: 'var(--text-primary)',
+@@ -174,6 +165,2 @@ export default function Editor() {
+-          <span style={{ fontSize: '0.75rem', color: 'white', fontWeight: 700, letterSpacing: '0.08em' }}>
+-            {dragItem.icon || 'OBJ'}
+-          </span>
+-          <span style={{ fontSize: '8px', color: 'white', fontWeight: 700, letterSpacing: '0.03em' }}>
+-            {dragItem.name}
+-          </span>
++          <LampFloor size={18} aria-hidden="true" />
++          <span>{dragItem.name}</span>
 diff --git a/src/store/useDesignStore.js b/src/store/useDesignStore.js
 --- a/src/store/useDesignStore.js
 +++ b/src/store/useDesignStore.js
