@@ -20,7 +20,7 @@ uv venv --python 3.12 "$scratch/venv"
 uv pip install --python "$scratch/venv/bin/python" -r backend/pyproject.toml --extra dev
 cd frontend/pascal-evaluation
 export PYTHONPATH=../../backend
-export SMART_HOME_DB_PATH="$scratch/success.sqlite3"
+export SMART_HOME_DB_PATH="$scratch/drawing.sqlite3"
 export SMART_HOME_SIMULATOR_MODE=success
 export SMART_HOME_COMMAND_TIMEOUT_SECONDS=1
 "$scratch/venv/bin/python" -m uvicorn prototype_api:create_evaluation_app \
@@ -36,36 +36,46 @@ NEXT_TELEMETRY_DISABLED=1 npm run build
 NEXT_TELEMETRY_DISABLED=1 npm start
 ```
 
-Open `http://127.0.0.1:3160` in desktop Chrome. Choose **2D** and **Split**, then choose **3D** in the second
-pane. Close the Pascal Plugins panel if it is open. Set **3D walls** to **Cutaway** to see the furnishings.
-The first unsaved layout includes the living room, study, shared wall, hosted door, and bound floor lamp.
-With a fresh database, `/?blank` opens an empty level for drawing. Both URLs reopen the saved layout once
-the database contains one.
+In desktop Chrome, choose **2D** and **Split**, then choose **3D** in the second pane. Close the
+Pascal Plugins panel if it is open. Set **3D walls** to **Cutaway** to see the furnishings. Use a new
+database for each walkthrough. Both URL variants reopen a layout if the database already has one.
 
-1. On a blank level, choose **Draw room**, then click two opposite corners. Use **Draw wall**
-   to draw a partition between the midpoints of two opposite walls. Pascal splits the outline and
-   detects the two rooms. Choose **Place door** and click the partition. Press Esc, select the door,
-   and edit its width in the inspector. The split view uses one scene, so edits propagate between panes.
-2. Choose **Place oak stool**, move the pointer into the study, and click to commit. Choose the lamp
-   footprint or its status badge. Expand the inspector to reach **Smart Home power**. Try the same
-   selection from the 3D view. Use **Copy lamp** in the Smart Home footer and inspect the
-   newly selected copy. The native inspector still supports moving it.
-3. **Save layout** and wait for **Saved**. Stop Uvicorn and repeat its start command with the same
-   database path. Reload Chrome and inspect the geometry. Compare `GET /api/evaluation/layout` before
-   and after restart to check the layout ID, node IDs, assets, transforms, shared wall, door, and binding.
-4. In a fresh success database, select the bound lamp and press **On**. The plan, 3D marker and inspector
-   update from the WebSocket confirmed state. The inspector shows the server timestamp and command outcome.
-5. Stop Uvicorn, export `SMART_HOME_DB_PATH="$scratch/timeout.sqlite3"` and
-   `SMART_HOME_SIMULATOR_MODE=timeout`, and start it again. Reload the browser to start from Off. Select
-   the lamp, pause live updates, press **On** and wait past the one-second deadline. Reconnect live
-   updates. The snapshot retains Off and the client looks up the accepted request to display the timeout.
+### Draw and edit from blank
+
+With the fresh `drawing.sqlite3` database, open `http://127.0.0.1:3160/?blank`. Choose **Draw room**
+and click two opposite corners. Use **Draw wall** to draw a partition between the midpoints of two
+opposite walls. Pascal splits the outline and detects two rooms. Choose **Place door** and click the
+partition. Press Esc, select the door, and edit its width. Verify both panes reflect the opening.
+
+### Furnish, save, and confirm power
+
+1. Stop Uvicorn. Export `SMART_HOME_DB_PATH="$scratch/success.sqlite3"` and restart Uvicorn with
+   success mode. Open `http://127.0.0.1:3160/` to get the seeded living room, study, and bound lamp.
+2. Choose **Place oak stool**, move the pointer into the study, and click to place it. Select the lamp
+   footprint or status badge in 2D, then try its status badge in 3D. Expand the inspector to reach
+   **Smart Home power**. Use **Copy lamp** in the footer. The new item can move and has no power controls.
+3. Change the shared door's width from 0.90 m to 1.20 m. Choose **Save layout** and wait for **Saved**.
+   Restart Uvicorn with the same database path, reload Chrome, and inspect the geometry. Compare
+   `GET /api/evaluation/layout` before and after restart to check IDs, assets, transforms, shared wall,
+   door, and binding.
+4. Select the original lamp and press **On**. The plan, 3D marker, and inspector show confirmed On
+   after the WebSocket event. The inspector shows the server timestamp and command outcome.
+
+### Recover a missed timeout
+
+Stop Uvicorn, export `SMART_HOME_DB_PATH="$scratch/timeout.sqlite3"` and
+`SMART_HOME_SIMULATOR_MODE=timeout`, and start it again. Reload the seeded layout at `/`. Select the
+lamp, pause live updates, press **On**, wait past the deadline, then reconnect. The snapshot restores
+Off and the command lookup recovers the timeout. If lookup fails, use **Check command status** in the
+inspector to look up the same request again.
 
 ## Integration and constraints
 
 - Pascal owns editing, tool interactions, picking, geometry and rendering. The host uses the public
   editor, selection, tool and scene-slot interfaces. The extra plan and scene markers point into
   Pascal selection. Pascal's inspector footer hosts the device controls, and Pascal controls inspector
-  expansion. The native lamp Duplicate carry interaction did not retain a copy in the tested
+  expansion. Direct clicks on the 3D lamp mesh were unreliable in split view, so use the in-scene
+  badge there. The native lamp Duplicate carry interaction did not retain a copy in the tested
   split-view flows. **Copy lamp** commits a new item through Pascal's public scene store,
   with the same template and rotation and a 65 cm offset. The host uses Instrument Sans, Smart Home colors and focus indicators on its controls.
 - The prototype adapter wraps the existing FastAPI factory and SQLite store. Its new layout endpoint
@@ -104,8 +114,8 @@ npm test
   prototype_api.py test_prototype_api.py scripts/make-models.py
 ```
 
-Keep Home3D for the course baseline. Pascal offers shared-wall topology, hosted openings, and linked
-2D/3D editing without writing a renderer. Adopting it would add a Next.js app and its asset setup,
-continued management of a published-package workaround, a new graph contract, and separate host
-integration for selection, persistence and confirmed-state controls. The evaluation establishes a
-basis for revisiting the renderer after the approved Week 13 demo and before any migration decision.
+Keep Home3D for the course baseline. Pascal's supported Next.js host ran and demonstrated shared
+walls, hosted openings, linked 2D/3D editing, and Smart Home controls in one workspace. The main
+migration costs are moving the existing layouts to a new graph contract, improving 3D picking, and
+maintaining the package and asset setup. Those costs are worth revisiting if the team decides that
+Pascal's multi-room tools offer a faster route to the final furnished-house demo.

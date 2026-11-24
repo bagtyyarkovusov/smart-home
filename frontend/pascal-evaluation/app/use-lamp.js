@@ -13,13 +13,33 @@ export function useLamp() {
   const [link, setLink] = useState('connecting')
   const [paused, setPaused] = useState(false)
   const [error, setError] = useState('')
+  const [lookupError, setLookupError] = useState('')
   const inFlight = useRef(null)
 
   function receiveCommand(incoming) {
     if (inFlight.current?.requestId === incoming.requestId && incoming.status !== 'pending') {
       inFlight.current = null
+      setLookupError('')
     }
     setCommand((current) => updateCommand(current, incoming))
+  }
+
+  async function recover(pending) {
+    if (!pending?.accepted || inFlight.current !== pending) return
+    try {
+      const response = await fetch(`${commands}/${encodeURIComponent(pending.requestId)}`, {
+        cache: 'no-store', signal: AbortSignal.timeout(5000),
+      })
+      if (!response.ok) throw new Error(`Command lookup HTTP ${response.status}`)
+      const recovered = await response.json()
+      if (inFlight.current !== pending) return
+      setLookupError('')
+      receiveCommand(recovered)
+    } catch {
+      if (inFlight.current === pending) {
+        setLookupError('Could not check command status. Try checking again.')
+      }
+    }
   }
 
   useEffect(() => {
@@ -31,17 +51,6 @@ export function useLamp() {
     let disposed = false
     let socket
     let reconnect
-    async function recover(requestId) {
-      try {
-        const response = await fetch(`${commands}/${encodeURIComponent(requestId)}`, { cache: 'no-store' })
-        if (!response.ok) throw new Error(`Command lookup HTTP ${response.status}`)
-        const recovered = await response.json()
-        if (!disposed) receiveCommand(recovered)
-      } catch (failure) {
-        if (!disposed) setError(failure.message)
-      }
-    }
-
     function connect() {
       setLink('connecting')
       socket = new WebSocket(socketUrl)
@@ -52,8 +61,7 @@ export function useLamp() {
         if (frame.command) receiveCommand(frame.command)
         if (frame.type === 'snapshot') {
           setLink('connected')
-          const pending = inFlight.current
-          if (pending?.accepted) void recover(pending.requestId)
+          void recover(inFlight.current)
         }
       }
       socket.onclose = () => {
@@ -77,6 +85,7 @@ export function useLamp() {
     inFlight.current = { requestId, accepted: false }
     setCommand({ requestId, status: 'pending' })
     setError('')
+    setLookupError('')
     try {
       const response = await fetch(commands, {
         method: 'POST',
@@ -85,12 +94,12 @@ export function useLamp() {
       })
       if (!response.ok) throw new Error(`Power request HTTP ${response.status}`)
       receiveCommand(await response.json())
-      if (inFlight.current?.requestId === requestId) {
-        inFlight.current.accepted = true
+      const pending = inFlight.current
+      if (pending?.requestId === requestId) {
+        pending.accepted = true
         // A reconnect snapshot may have arrived while the HTTP request was in flight.
         // This lookup closes that race without replaying the command.
-        const lookup = await fetch(`${commands}/${requestId}`, { cache: 'no-store' })
-        if (lookup.ok) receiveCommand(await lookup.json())
+        void recover(pending)
       }
     } catch (failure) {
       setError(failure.message)
@@ -101,5 +110,9 @@ export function useLamp() {
     }
   }
 
-  return { state: projection.state, command, requestPower, paused, setPaused, link, error }
+  return {
+    state: projection.state, command, requestPower, paused, setPaused, link,
+    error: lookupError || error,
+    checkCommandStatus: () => recover(inFlight.current),
+  }
 }

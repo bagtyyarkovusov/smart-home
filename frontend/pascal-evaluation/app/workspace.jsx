@@ -69,6 +69,9 @@ function PowerControls({ item, device, lamp }) {
     </div>
     {lamp.command && <p role="status">{commandLabels[lamp.command.status] ?? lamp.command.status}</p>}
     {lamp.error && <p role="alert">{lamp.error}</p>}
+    {lamp.command?.status === 'pending' && lamp.command.deviceId && (
+      <button onClick={lamp.checkCommandStatus}>Check command status</button>
+    )}
     <button onClick={() => copyLamp(item)}>Copy lamp</button>
   </section>
 }
@@ -85,13 +88,14 @@ function selectLamp(id, event) {
 
 function LampPlan({ item, state }) {
   const render = useFloorplanRender()
-  const scale = render?.unitsPerPixel ?? 0.02
   const [x, , z] = item.position
   const selecting = useEditor((editor) => editor.mode === 'select' || editor.mode === 'edit')
   const label = powerLabel(state)
+  if (!render) return null
+  const { unitsPerPixel: scale, sceneRotationDeg } = render
   return <g transform={`translate(${x} ${z})`} aria-label={`2D lamp power ${label}`}>
     <circle r={0.29} fill="none" stroke={state?.value ? '#c47a15' : '#2457b8'} strokeWidth={0.025} pointerEvents="none" />
-    <g transform={`rotate(${-(render?.sceneRotationDeg ?? 0)}) translate(${scale * 14} ${scale * 12}) scale(${scale})`}>
+    <g transform={`rotate(${-sceneRotationDeg}) translate(${scale * 14} ${scale * 12}) scale(${scale})`}>
       <g className="plan-power" role="button" tabIndex={selecting ? 0 : -1}
         aria-label={`Select floor lamp in 2D · ${label}`} pointerEvents={selecting ? 'auto' : 'none'}
         onClick={(event) => selectLamp(item.id, event)}
