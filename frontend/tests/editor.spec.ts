@@ -159,8 +159,8 @@ test('round-trips a plan created in the editor and retries a failed fixture edit
   await expect(measurement).toHaveCSS('color', 'rgb(23, 42, 58)')
   await expect(measurement).toHaveCSS('background-color', 'rgb(255, 255, 255)')
   await measure.click()
+  await expect(measure).toBeFocused()
 
-  await canvas.click({ position: measurementStart })
   const wallBeforePan = await wall.boundingBox()
   if (!wallBeforePan) throw new Error('Wall is not visible before panning')
   await page.keyboard.down('Space')
@@ -170,6 +170,7 @@ test('round-trips a plan created in the editor and retries a failed fixture edit
   await page.mouse.up()
   await page.keyboard.up('Space')
   await expect.poll(async () => (await wall.boundingBox())?.x).toBeGreaterThan(wallBeforePan.x + 150)
+  await expect(measure).toHaveAttribute('aria-pressed', 'false')
   await zoom.getByTestId('reset-view-btn').click()
 
   const save = page.getByRole('button', { name: 'Save layout', exact: true })
