@@ -1,6 +1,6 @@
 # Smart Home architecture · v0.2
 
-**Week 10 proposal.** One household, one browser application, one backend, and persistent storage. The first review scenario is a resident placing a lamp in a room and controlling it from the floor plan. The apartment story and team assignments are open. See the [course checklist](checkpoint-checklist-en.md) for instructor requirements.
+**Week 10 proposal.** One household, one browser application, one backend, and persistent storage. The first review scenario is a resident placing a lamp in a room and controlling it from the floor plan. The [team plan](project-plan-zh.md) defines the household problem and the four team roles. Match those roles to the actual team members for the review. See the [course checklist](checkpoint-checklist-en.md) for instructor requirements.
 
 ## Technology decision
 
@@ -79,7 +79,7 @@ A resident draws a room, places a lamp, saves, reloads, and presses **On**. Stra
 
 ## Build order and evidence
 
-1. **Week 10:** Explain the project goal, five responsibilities, diagram arrows, and the lamp interfaces. Agree on owners, household, and the simulator assumption.
+1. **Week 10:** Explain the project goal, five responsibilities, diagram arrows, and the lamp interfaces. Present the household scenario, confirm the four named owners, and explain the simulator-first approach.
 2. **Week 13:** Implement the room-and-lamp feature first. Expand the catalog and state views around it. Demonstrate map creation, placement, control, and state query. Record success and timeout evidence.
 3. **Final:** Complete F1–F5. Add Home, Away, and Sleep scene plans, dynamic temperature policy, and progress. Decide which optional feature to demonstrate after estimating baseline work. The climate formula and offline-sensor fallback need their own decisions.
 
