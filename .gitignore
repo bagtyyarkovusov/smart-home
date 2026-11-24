@@ -24,3 +24,7 @@ dist/
 *.sqlite3
 *.sqlite-wal
 *.sqlite-shm
+
+# Generated Home3D checkout and local mock layout data.
+frontend/.home3d/
+frontend/.home3d-setup.*/
