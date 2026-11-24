@@ -1,6 +1,7 @@
 import json
 import sqlite3
 import threading
+import time
 from pathlib import Path
 from typing import Any
 
@@ -50,6 +51,17 @@ class SqliteStore:
                     updated_at TEXT NOT NULL,
                     revision INTEGER NOT NULL,
                     PRIMARY KEY (device_id, capability)
+                )
+                """
+            )
+            connection.execute(
+                """
+                CREATE TABLE IF NOT EXISTS device_state_history (
+                    revision INTEGER PRIMARY KEY,
+                    device_id TEXT NOT NULL,
+                    capability TEXT NOT NULL,
+                    value_json TEXT NOT NULL,
+                    updated_at TEXT NOT NULL
                 )
                 """
             )
@@ -231,13 +243,17 @@ class SqliteStore:
         request_id: str,
         updated_at: str,
     ) -> CommandOutcome | None:
-        with self._write_lock, self._connect() as connection:
+        with self._write_lock, self._connect(timeout=0) as connection:
             connection.execute("BEGIN IMMEDIATE")
-            command = self._get_pending_command(connection, request_id)
-            if command is None:
+            pending = self._get_pending_command(connection, request_id)
+            if pending is None:
+                return None
+            command, deadline_epoch = pending
+            if time.time() >= deadline_epoch:
                 return None
 
             revision = self._next_revision(connection)
+            serialized_value = json.dumps(command.value)
             connection.execute(
                 """
                     UPDATE commands
@@ -250,20 +266,40 @@ class SqliteStore:
                     CommandStatus.PENDING.value,
                 ),
             )
-            connection.execute(
+            updated = connection.execute(
                 """
                     UPDATE device_states
                     SET value_json = ?, updated_at = ?, revision = ?
                     WHERE device_id = ? AND capability = ?
                     """,
                 (
-                    json.dumps(command.value),
+                    serialized_value,
                     updated_at,
                     revision,
                     command.device_id,
                     command.capability,
                 ),
             )
+            if updated.rowcount != 1:
+                raise sqlite3.IntegrityError("Confirmed state row is missing.")
+            connection.execute(
+                """
+                INSERT INTO device_state_history
+                    (device_id, capability, value_json, updated_at, revision)
+                VALUES (?, ?, ?, ?, ?)
+                """,
+                (
+                    command.device_id,
+                    command.capability,
+                    serialized_value,
+                    updated_at,
+                    revision,
+                ),
+            )
+            if time.time() >= deadline_epoch:
+                connection.rollback()
+                return None
+
             succeeded = CommandRecord(
                 request_id=command.request_id,
                 device_id=command.device_id,
@@ -288,11 +324,12 @@ class SqliteStore:
             )
 
     def commit_timed_out(self, request_id: str) -> CommandOutcome | None:
-        with self._write_lock, self._connect() as connection:
+        with self._write_lock, self._connect(timeout=0) as connection:
             connection.execute("BEGIN IMMEDIATE")
-            command = self._get_pending_command(connection, request_id)
-            if command is None:
+            pending = self._get_pending_command(connection, request_id)
+            if pending is None:
                 return None
+            command, _ = pending
 
             revision = self._next_revision(connection)
             connection.execute(
@@ -343,16 +380,18 @@ class SqliteStore:
         self,
         connection: sqlite3.Connection,
         request_id: str,
-    ) -> CommandRecord | None:
+    ) -> tuple[CommandRecord, float] | None:
         row = connection.execute(
             """
-            SELECT request_id, device_id, capability, value_json, status
+            SELECT request_id, device_id, capability, value_json, status, deadline_epoch
             FROM commands
             WHERE request_id = ? AND status = ?
             """,
             (request_id, CommandStatus.PENDING.value),
         ).fetchone()
-        return None if row is None else self._command_from_row(row)
+        if row is None:
+            return None
+        return self._command_from_row(row), float(row["deadline_epoch"])
 
     def _next_revision(self, connection: sqlite3.Connection) -> int:
         row = connection.execute(
@@ -378,7 +417,7 @@ class SqliteStore:
             status=CommandStatus(row["status"]),
         )
 
-    def _connect(self) -> sqlite3.Connection:
-        connection = sqlite3.connect(self.database_path)
+    def _connect(self, timeout: float = 5.0) -> sqlite3.Connection:
+        connection = sqlite3.connect(self.database_path, timeout=timeout)
         connection.row_factory = sqlite3.Row
         return connection

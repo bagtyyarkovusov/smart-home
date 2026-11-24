@@ -2,6 +2,7 @@ import json
 import sqlite3
 from pathlib import Path
 
+import pytest
 from fastapi.testclient import TestClient
 
 from app.main import create_app
@@ -15,6 +16,9 @@ LAYOUT_FIXTURE = (
 def test_saved_layout_survives_backend_restart(tmp_path: Path) -> None:
     database_path = tmp_path / "smart-home.sqlite3"
     layout = json.loads(LAYOUT_FIXTURE.read_text(encoding="utf-8"))
+    layout["rooms"][0]["walls"][0]["start"] = [-20, 40.5]
+    layout["rooms"][0]["items"][0]["position"] = [120, -80.5]
+    layout["rooms"][0]["items"][0]["rotationDeg"] = -390.5
 
     with TestClient(create_app(database_path=database_path)) as client:
         response = client.get("/api/layouts/week-13")
@@ -32,16 +36,61 @@ def test_saved_layout_survives_backend_restart(tmp_path: Path) -> None:
     assert response.json() == layout
 
 
-def test_invalid_layout_does_not_replace_saved_document(tmp_path: Path) -> None:
+@pytest.mark.parametrize(
+    ("path", "invalid_value"),
+    [
+        (("version",), 2),
+        (("version",), True),
+        (("version",), 1.0),
+        (("rooms", 0, "walls", 0, "start", 0), "20"),
+        (("rooms", 0, "walls", 0, "end", 1), False),
+        (("rooms", 0, "items", 0, "position", 1), float("inf")),
+        (("rooms", 0, "items", 0, "rotationDeg"), "-30"),
+        (("rooms", 0, "walls"), []),
+        (("rooms", 0, "items"), []),
+        (
+            ("rooms", 0, "walls"),
+            [
+                {"id": "w1", "start": [0, 0], "end": [2, 3]},
+                {"id": "w2", "start": [4, 5], "end": [6, 7]},
+            ],
+        ),
+        (
+            ("rooms", 0, "items"),
+            [
+                {
+                    "id": f"lamp-object-{index}",
+                    "templateId": "floor-lamp",
+                    "deviceId": "lamp-7",
+                    "position": [index, 0],
+                    "rotationDeg": -30,
+                }
+                for index in range(2)
+            ],
+        ),
+        (("rooms", 0, "items", 0, "deviceId"), "lamp-8"),
+        (("rooms", 0, "items", 0, "templateId"), "chair"),
+        (("rooms", 0, "items", 0, "id"), "wall-1"),
+    ],
+)
+def test_invalid_layout_does_not_replace_saved_document(
+    tmp_path: Path, path: tuple[str | int, ...], invalid_value: object
+) -> None:
     database_path = tmp_path / "smart-home.sqlite3"
     layout = json.loads(LAYOUT_FIXTURE.read_text(encoding="utf-8"))
 
     with TestClient(create_app(database_path=database_path)) as client:
         assert client.put("/api/layouts/week-13", json=layout).status_code == 200
 
+        invalid = json.loads(LAYOUT_FIXTURE.read_text(encoding="utf-8"))
+        target = invalid
+        for key in path[:-1]:
+            target = target[key]
+        target[path[-1]] = invalid_value
         response = client.put(
             "/api/layouts/week-13",
-            json={"version": 2, "id": "week-13", "rooms": []},
+            content=json.dumps(invalid).replace("Infinity", "1e999"),
+            headers={"Content-Type": "application/json"},
         )
         assert response.status_code == 422
         assert response.json()["error"]["code"] == "invalid_layout"

@@ -1,4 +1,6 @@
 import asyncio
+import logging
+import sqlite3
 import time
 from datetime import UTC, datetime
 
@@ -6,6 +8,12 @@ from app.device import SimulatedLamp
 from app.domain import CommandAcceptance, CommandPlan
 from app.persistence import SqliteStore
 from app.realtime import EventHub
+
+logger = logging.getLogger(__name__)
+
+
+class InvalidCommandPlanError(ValueError):
+    pass
 
 
 class UnknownDeviceError(Exception):
@@ -27,6 +35,8 @@ class CommandService:
         self._tasks: set[asyncio.Task[None]] = set()
 
     def accept(self, plan: CommandPlan) -> CommandAcceptance:
+        if plan.capability != "power" or type(plan.value) is not bool:
+            raise InvalidCommandPlanError("Expected a Boolean power action.")
         if not self.store.has_writable_power(plan.device_id):
             raise UnknownDeviceError(plan.device_id)
 
@@ -39,25 +49,20 @@ class CommandService:
             deadline_epoch=deadline_epoch,
         )
         if acceptance.created:
-            task = asyncio.create_task(self._apply(plan, deadline_epoch))
-            self._tasks.add(task)
-            task.add_done_callback(self._tasks.discard)
+            self._track(asyncio.create_task(self._apply(plan, deadline_epoch)))
         return acceptance
 
     async def recover_pending(self) -> None:
-        now = time.time()
         for command, deadline_epoch in self.store.pending_commands():
-            if deadline_epoch <= now:
-                outcome = self.store.commit_timed_out(command.request_id)
-                if outcome is not None:
-                    await self.events.publish(outcome.event)
-                continue
-
-            task = asyncio.create_task(
-                self._expire_without_redispatch(command.request_id, deadline_epoch)
+            self._track(
+                asyncio.create_task(self._finish(command.request_id, deadline_epoch))
             )
-            self._tasks.add(task)
-            task.add_done_callback(self._tasks.discard)
+        # Give expired commands one write attempt before startup completes.
+        await asyncio.sleep(0)
+
+    def _track(self, task: asyncio.Task[None]) -> None:
+        self._tasks.add(task)
+        task.add_done_callback(self._tasks.discard)
 
     async def shutdown(self) -> None:
         tasks = tuple(self._tasks)
@@ -66,35 +71,55 @@ class CommandService:
         await asyncio.gather(*tasks, return_exceptions=True)
 
     async def _apply(self, plan: CommandPlan, deadline_epoch: float) -> None:
+        confirmed_at = None
         try:
             confirmed_value = await asyncio.wait_for(
                 self.device.apply(plan),
                 timeout=max(0.0, deadline_epoch - time.time()),
             )
         except TimeoutError:
-            outcome = self.store.commit_timed_out(plan.request_id)
+            pass
         else:
-            if confirmed_value != plan.value:
-                outcome = self.store.commit_timed_out(plan.request_id)
-            else:
-                outcome = self.store.commit_success(
-                    plan.request_id,
-                    _utc_timestamp(datetime.now(UTC)),
-                )
+            if confirmed_value is plan.value:
+                confirmed_at = _utc_timestamp(datetime.now(UTC))
 
-        if outcome is not None:
-            await self.events.publish(outcome.event)
+        await self._finish(plan.request_id, deadline_epoch, confirmed_at)
 
-    async def _expire_without_redispatch(
+    async def _finish(
         self,
         request_id: str,
         deadline_epoch: float,
+        confirmed_at: str | None = None,
     ) -> None:
-        delay = max(0.0, deadline_epoch - time.time())
-        await asyncio.sleep(delay)
-        outcome = self.store.commit_timed_out(request_id)
-        if outcome is not None:
-            await self.events.publish(outcome.event)
+        retry_delay = 0.01
+        while True:
+            remaining = deadline_epoch - time.time()
+            if confirmed_at is None and remaining > 0:
+                await asyncio.sleep(remaining)
+                continue
+
+            try:
+                if confirmed_at is not None and remaining > 0:
+                    outcome = self.store.commit_success(request_id, confirmed_at)
+                    if outcome is None and time.time() >= deadline_epoch:
+                        continue
+                else:
+                    outcome = self.store.commit_timed_out(request_id)
+            except (sqlite3.OperationalError, sqlite3.IntegrityError):
+                if retry_delay == 0.01:
+                    logger.warning(
+                        "Command outcome write failed; retrying.", exc_info=True
+                    )
+                remaining = deadline_epoch - time.time()
+                await asyncio.sleep(
+                    min(retry_delay, remaining) if remaining > 0 else retry_delay
+                )
+                retry_delay = min(2 * retry_delay, 1.0)
+                continue
+
+            if outcome is not None:
+                await self.events.publish(outcome.event)
+            return
 
 
 def _utc_timestamp(value: datetime) -> str:

@@ -1,11 +1,13 @@
 # Smart Home backend
 
 FastAPI service for the one-room, one-lamp Week 13 demo. SQLite stores the
-saved layout, confirmed device state, command outcomes, and stream revision.
+layout, confirmed device state and its history, command outcomes, and stream revision.
 
 ## Setup
 
-Requires Python 3.12 or newer.
+Requires Python 3.12 or newer. Run from the repository root.
+
+PowerShell
 
 ```powershell
 cd backend
@@ -13,55 +15,97 @@ python -m venv .venv
 .\.venv\Scripts\python.exe -m pip install -e ".[dev]"
 ```
 
-## Run
+POSIX shell
 
-Choose an isolated database file and start one process:
-
-```powershell
-$env:SMART_HOME_DB_PATH = Join-Path (Get-Location) "data\demo.sqlite3"
-$env:SMART_HOME_SIMULATOR_MODE = "success"
-$env:SMART_HOME_COMMAND_TIMEOUT_SECONDS = "1.0"
-.\.venv\Scripts\python.exe -m uvicorn app.main:app --host 127.0.0.1 --port 8000
+```sh
+cd backend
+python3 -m venv .venv
+.venv/bin/python -m pip install -e '.[dev]'
 ```
 
-The database is created on startup. The synthetic `lamp-7` device starts with
-confirmed power Off and state revision 0. No layout exists until one is saved.
-To demonstrate a timeout, restart the backend with
-`SMART_HOME_SIMULATOR_MODE=timeout`.
+## Run
+
+Run from `backend` with exactly one worker. WebSocket subscriptions and
+simulator dispatch run in that worker. Use a fresh temporary directory for an
+isolated demo database.
+
+PowerShell
+
+```powershell
+$demoDir = Join-Path ([System.IO.Path]::GetTempPath()) ("smart-home-" + [guid]::NewGuid())
+New-Item -ItemType Directory -Path $demoDir | Out-Null
+$env:SMART_HOME_DB_PATH = Join-Path $demoDir "success.sqlite3"
+$env:SMART_HOME_SIMULATOR_MODE = "success"
+$env:SMART_HOME_COMMAND_TIMEOUT_SECONDS = "1.0"
+.\.venv\Scripts\python.exe -m uvicorn app.main:app --host 127.0.0.1 --port 8000 --workers 1
+```
+
+POSIX shell
+
+```sh
+demo_dir="$(mktemp -d "${TMPDIR:-/tmp}/smart-home.XXXXXX")"
+export SMART_HOME_DB_PATH="$demo_dir/success.sqlite3"
+export SMART_HOME_SIMULATOR_MODE=success
+export SMART_HOME_COMMAND_TIMEOUT_SECONDS=1.0
+.venv/bin/python -m uvicorn app.main:app --host 127.0.0.1 --port 8000 --workers 1
+```
+
+The database is created on startup. The synthetic `lamp-7` starts at confirmed
+Off with state revision 0. Save a layout, stop the server with Ctrl+C, and run
+the same Uvicorn command with the same database path to verify the layout
+survives restart. Use a second terminal in `backend` for the requests below.
 
 ## Contract examples
 
-Save the committed Week 13 fixture:
+PowerShell
 
 ```powershell
-curl.exe -X PUT `
-  -H "Content-Type: application/json" `
+curl.exe -X PUT -H "Content-Type: application/json" `
   --data-binary "@../docs/contracts/week-13/layout.v1.json" `
   http://127.0.0.1:8000/api/layouts/week-13
-```
+curl.exe http://127.0.0.1:8000/api/layouts/week-13
 
-Commands and state:
-
-```powershell
-curl.exe http://127.0.0.1:8000/api/devices/lamp-7/state
-curl.exe -X POST `
-  -H "Content-Type: application/json" `
-  -d "{\"requestId\":\"power-on-1\",\"capability\":\"power\",\"value\":true}" `
+$scenarios = Get-Content -Raw ../docs/contracts/week-13/lamp-scenarios.json | ConvertFrom-Json
+$requestFile = [System.IO.Path]::GetTempFileName()
+$scenarios.success.request | ConvertTo-Json -Compress | Set-Content -Encoding ascii -Path $requestFile
+curl.exe -X POST -H "Content-Type: application/json" --data-binary "@$requestFile" `
   http://127.0.0.1:8000/api/devices/lamp-7/commands
 curl.exe http://127.0.0.1:8000/api/devices/lamp-7/commands/power-on-1
+curl.exe http://127.0.0.1:8000/api/devices/lamp-7/state
 ```
 
-The WebSocket endpoint is `/api/ws`. Its first frame is a snapshot containing
-the confirmed state and current stream revision; later frames follow the
-contract in [`docs/contracts/week-13/README.md`](../docs/contracts/week-13/README.md).
+POSIX shell
+
+```sh
+curl -X PUT -H 'Content-Type: application/json' \
+  --data-binary @../docs/contracts/week-13/layout.v1.json \
+  http://127.0.0.1:8000/api/layouts/week-13
+curl http://127.0.0.1:8000/api/layouts/week-13
+
+request_file="$(mktemp "${TMPDIR:-/tmp}/smart-home-request.XXXXXX")"
+.venv/bin/python -c 'import json, sys; print(json.dumps(json.load(sys.stdin)[sys.argv[1]]["request"]))' \
+  success < ../docs/contracts/week-13/lamp-scenarios.json > "$request_file"
+curl -X POST -H 'Content-Type: application/json' --data-binary "@$request_file" \
+  http://127.0.0.1:8000/api/devices/lamp-7/commands
+curl http://127.0.0.1:8000/api/devices/lamp-7/commands/power-on-1
+curl http://127.0.0.1:8000/api/devices/lamp-7/state
+```
+
+To demonstrate a timeout from Off, stop the success server. In its terminal,
+set `SMART_HOME_DB_PATH` to a fresh file named `timeout.sqlite3` in the demo
+directory and set `SMART_HOME_SIMULATOR_MODE=timeout`. Run the same Uvicorn
+command and GET the lamp state to verify it starts Off. Use
+`$scenarios.timeout.request` in the PowerShell fixture extraction or replace
+`success` with `timeout` in the POSIX fixture extraction. POST that file. After
+one second, look up `power-on-2` and expect `timed_out`. GET the lamp state
+again and expect the same Off value, timestamp, and state revision.
+
+Connect to `ws://127.0.0.1:8000/api/ws` before sending a command to observe
+the snapshot followed by the terminal event. To test reconnect, disconnect
+before the timeout, then reconnect and look up the timed-out command by ID.
+Frame examples live in the [Week 13 contract](../docs/contracts/week-13/README.md).
 
 ## Test
 
-```powershell
-cd backend
-.\.venv\Scripts\python.exe -m pytest -q
-```
-
-The suite covers layout save/reload and restart, validation and storage failure,
-confirmed-state snapshots, successful power control, deterministic timeout,
-idempotency and request conflicts, and pending-command recovery after restart.
+From `backend`, run `.venv/bin/python -m pytest -q` in a POSIX shell or
+`.\.venv\Scripts\python.exe -m pytest -q` in PowerShell.

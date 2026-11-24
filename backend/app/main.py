@@ -3,9 +3,11 @@ import sqlite3
 from contextlib import asynccontextmanager
 from pathlib import Path
 
+from anyio import CancelScope, create_task_group
 from fastapi import FastAPI
 from fastapi.exceptions import RequestValidationError
 from fastapi.responses import JSONResponse
+from starlette.convertors import PathConvertor, register_url_convertor
 from starlette.websockets import WebSocket, WebSocketDisconnect
 
 from app.control import CommandService, UnknownDeviceError
@@ -17,6 +19,14 @@ from app.realtime import EventHub
 from app.strategy import ManualCommandStrategy
 
 LAYOUT_ID = "week-13"
+
+
+class RequestIdConvertor(PathConvertor):
+    # ASGI decodes escaped slashes and newlines before route matching.
+    regex = r"(?s:.+)"
+
+
+register_url_convertor("request_id", RequestIdConvertor())
 
 
 def create_app(
@@ -79,7 +89,7 @@ def create_app(
         )
 
     @application.get(f"/api/layouts/{LAYOUT_ID}", response_model=None)
-    def get_layout() -> LayoutDocument | JSONResponse:
+    def get_layout() -> dict[str, object] | JSONResponse:
         layout = store.get(LAYOUT_ID)
         if layout is None:
             return JSONResponse(
@@ -91,7 +101,8 @@ def create_app(
                     }
                 },
             )
-        return LayoutDocument.model_validate(layout)
+        # The stricter PUT schema still lets users retrieve previously saved data.
+        return layout
 
     @application.put(f"/api/layouts/{LAYOUT_ID}", response_model=LayoutDocument)
     def put_layout(document: LayoutDocument) -> LayoutDocument | JSONResponse:
@@ -164,7 +175,7 @@ def create_app(
             content=acceptance.command.as_dict(),
         )
 
-    @application.get("/api/devices/{device_id}/commands/{request_id}")
+    @application.get("/api/devices/{device_id}/commands/{request_id:request_id}")
     def get_command(device_id: str, request_id: str) -> JSONResponse:
         command = store.get_command(request_id)
         if command is None or command.device_id != device_id:
@@ -183,26 +194,37 @@ def create_app(
     async def websocket_endpoint(websocket: WebSocket) -> None:
         await websocket.accept()
         queue = await events.subscribe()
-        state = store.get_device_state("lamp-7")
-        if state is None:
-            await websocket.close(code=1011)
-            await events.unsubscribe(queue)
-            return
 
-        await websocket.send_json(
-            {
-                "type": "snapshot",
-                "revision": store.get_stream_revision(),
-                "state": state.as_dict(),
-            }
-        )
+        async def send_events(cancel_scope: CancelScope) -> None:
+            try:
+                while True:
+                    await websocket.send_json(await queue.get())
+            except WebSocketDisconnect:
+                cancel_scope.cancel()
+
         try:
-            while True:
-                await websocket.send_json(await queue.get())
+            state = store.get_device_state("lamp-7")
+            if state is None:
+                await websocket.close(code=1011)
+                return
+
+            await websocket.send_json(
+                {
+                    "type": "snapshot",
+                    "revision": store.get_stream_revision(),
+                    "state": state.as_dict(),
+                }
+            )
+            async with create_task_group() as tasks:
+                tasks.start_soon(send_events, tasks.cancel_scope)
+                while (await websocket.receive())["type"] != "websocket.disconnect":
+                    pass
+                tasks.cancel_scope.cancel()
         except WebSocketDisconnect:
             pass
         finally:
-            await events.unsubscribe(queue)
+            with CancelScope(shield=True):
+                await events.unsubscribe(queue)
 
     return application
 

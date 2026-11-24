@@ -1,6 +1,7 @@
 import time
 from pathlib import Path
 
+import pytest
 from fastapi.testclient import TestClient
 
 from app.main import create_app
@@ -172,6 +173,25 @@ def test_invalid_and_unknown_command_inputs_have_contract_errors(
         missing_command = client.get("/api/devices/lamp-7/commands/not-found")
         assert missing_command.status_code == 404
         assert missing_command.json()["error"]["code"] == "command_not_found"
+
+
+@pytest.mark.parametrize(
+    ("request_id", "encoded_id"), [("on/1", "on%2F1"), ("on\n1", "on%0A1")]
+)
+def test_command_lookup_recovers_encoded_request_ids(
+    tmp_path: Path, request_id: str, encoded_id: str
+) -> None:
+    route = "/api/devices/lamp-7/commands"
+    with TestClient(
+        create_app(database_path=tmp_path / "smart-home.sqlite3")
+    ) as client:
+        accepted = client.post(
+            route, json={"requestId": request_id, "capability": "power", "value": True}
+        )
+        assert accepted.status_code == 202
+        found = client.get(f"{route}/{encoded_id}")
+        assert found.status_code == 200
+        assert found.json()["requestId"] == request_id
 
 
 def test_confirmed_command_outcome_survives_backend_restart(tmp_path: Path) -> None:

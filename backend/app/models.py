@@ -1,5 +1,4 @@
-import math
-from typing import Literal, Self
+from typing import Annotated, Literal, Self
 
 from pydantic import (
     BaseModel,
@@ -10,6 +9,8 @@ from pydantic import (
     model_validator,
 )
 
+GeometryNumber = Annotated[float, Field(strict=True, allow_inf_nan=False)]
+
 
 class StrictModel(BaseModel):
     model_config = ConfigDict(extra="forbid")
@@ -17,17 +18,8 @@ class StrictModel(BaseModel):
 
 class Wall(StrictModel):
     id: str = Field(min_length=1)
-    start: tuple[float, float]
-    end: tuple[float, float]
-
-    @field_validator("start", "end")
-    @classmethod
-    def coordinates_must_be_finite(
-        cls, value: tuple[float, float]
-    ) -> tuple[float, float]:
-        if not all(math.isfinite(coordinate) for coordinate in value):
-            raise ValueError("Coordinates must be finite.")
-        return value
+    start: tuple[GeometryNumber, GeometryNumber]
+    end: tuple[GeometryNumber, GeometryNumber]
 
     @model_validator(mode="after")
     def endpoints_must_differ(self) -> Self:
@@ -38,53 +30,38 @@ class Wall(StrictModel):
 
 class PlacedItem(StrictModel):
     id: str = Field(min_length=1)
-    templateId: str = Field(min_length=1)
-    deviceId: str = Field(min_length=1)
-    position: tuple[float, float]
-    rotationDeg: float
-
-    @field_validator("position")
-    @classmethod
-    def position_must_be_finite(cls, value: tuple[float, float]) -> tuple[float, float]:
-        if not all(math.isfinite(coordinate) for coordinate in value):
-            raise ValueError("Position coordinates must be finite.")
-        return value
-
-    @field_validator("rotationDeg")
-    @classmethod
-    def rotation_must_be_finite(cls, value: float) -> float:
-        if not math.isfinite(value):
-            raise ValueError("Rotation must be finite.")
-        return value
+    templateId: Literal["floor-lamp"]
+    deviceId: Literal["lamp-7"]
+    position: tuple[GeometryNumber, GeometryNumber]
+    rotationDeg: GeometryNumber
 
 
 class Room(StrictModel):
     id: str = Field(min_length=1)
-    walls: list[Wall]
-    items: list[PlacedItem]
+    walls: list[Wall] = Field(min_length=1, max_length=1)
+    items: list[PlacedItem] = Field(min_length=1, max_length=1)
 
 
 class LayoutDocument(StrictModel):
     version: Literal[1]
     id: Literal["week-13"]
-    rooms: list[Room]
+    rooms: list[Room] = Field(min_length=1, max_length=1)
+
+    @field_validator("version", mode="before")
+    @classmethod
+    def version_must_be_integer(cls, value: object) -> int:
+        if type(value) is not int:
+            raise ValueError("Layout version must be an integer.")
+        return value
 
     @model_validator(mode="after")
-    def one_room_with_stable_unique_objects(self) -> Self:
-        if len(self.rooms) != 1:
-            raise ValueError("Week 13 expects exactly one room.")
-
+    def object_ids_must_differ(self) -> Self:
         room = self.rooms[0]
-        object_ids = [wall.id for wall in room.walls] + [item.id for item in room.items]
-        if len(object_ids) != len(set(object_ids)):
+        if room.walls[0].id == room.items[0].id:
             raise ValueError(
                 "Wall and placed item IDs must be unique within the layout."
             )
 
-        if not room.walls:
-            raise ValueError("The room must contain at least one wall.")
-        if not room.items:
-            raise ValueError("The room must contain at least one placed item.")
         return self
 
 
