@@ -105,7 +105,35 @@ the snapshot followed by the terminal event. To test reconnect, disconnect
 before the timeout, then reconnect and look up the timed-out command by ID.
 Frame examples live in the [Week 13 contract](../docs/contracts/week-13/README.md).
 
+## Manual command Strategy
+
+The command POST route passes the validated On or Off intent to
+`ManualCommandStrategy.submit_power`. This Week 13 On example uses the app's
+configured Control service `commands` from the route's event loop.
+
+```python
+from app.domain import CommandIntent
+from app.strategy import ManualCommandStrategy
+
+strategy = ManualCommandStrategy(commands)
+intent = CommandIntent(request_id="power-on-1", capability="power", value=True)
+acceptance = strategy.submit_power("lamp-7", intent)
+```
+
+Strategy passes the following single-action plan to `Control.accept`.
+
+```python
+CommandPlan(device_id="lamp-7", request_id="power-on-1", capability="power", value=True)
+```
+
+The route receives Control's `CommandAcceptance` directly. Control dispatches
+to Device, enforces the deadline, and persists confirmed state from Device
+reports. A new command starts pending. Reusing the same request ID and fields
+returns the stored command record, including `timed_out` if the deadline expired.
+
 ## Test
 
 From `backend`, run `.venv/bin/python -m pytest -q` in a POSIX shell or
 `.\.venv\Scripts\python.exe -m pytest -q` in PowerShell.
+Run `.venv/bin/python -m pytest -q tests/test_strategy.py` for the focused fake
+Control tests for On, Off, request ID preservation, and the timeout outcome.

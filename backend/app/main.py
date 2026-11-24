@@ -59,7 +59,7 @@ def create_app(
         events=events,
         timeout_seconds=resolved_timeout,
     )
-    strategy = ManualCommandStrategy()
+    strategy = ManualCommandStrategy(commands)
 
     @asynccontextmanager
     async def lifespan(_application: FastAPI):
@@ -140,16 +140,13 @@ def create_app(
         device_id: str,
         command_request: PowerCommandRequest,
     ) -> dict[str, object] | JSONResponse:
-        plan = strategy.plan_power(
-            device_id,
-            CommandIntent(
-                request_id=command_request.requestId,
-                capability=command_request.capability,
-                value=command_request.value,
-            ),
+        intent = CommandIntent(
+            request_id=command_request.requestId,
+            capability=command_request.capability,
+            value=command_request.value,
         )
         try:
-            acceptance = commands.accept(plan)
+            acceptance = strategy.submit_power(device_id, intent)
         except UnknownDeviceError:
             return JSONResponse(
                 status_code=404,
