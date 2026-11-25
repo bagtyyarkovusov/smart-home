@@ -1,8 +1,9 @@
-import { ItemNode, loadPlugin, useScene } from '@pascal-app/core'
+import { ItemNode, loadPlugin, sceneRegistry, useLiveNodeOverrides, useScene } from '@pascal-app/core'
 import { activateCatalogItem, applySceneGraphToEditor, Editor, getSavedSceneDocument, openEditorView, selectWallDrawVariant, useEditor, useFloorplanRender, useSelection } from '@pascal-app/editor'
 import { builtinPlugin } from '@pascal-app/nodes'
 import { configureViewer, setSlotDefaultOverrides, useViewer } from '@pascal-app/viewer'
 import { Html } from '@react-three/drei'
+import { createPortal, useFrame } from '@react-three/fiber'
 import { createContext, useCallback, useContext, useEffect, useRef, useState } from 'react'
 import { deviceId, floorLamp, furnitureTemplates, importWeek13Layout, layoutDocument, layoutId, proceduralFloorLamp, startingScene } from './scene.mjs'
 import { api, useLamp } from './use-lamp'
@@ -142,20 +143,26 @@ function LampPlan({ item, state }) {
 }
 
 function LampScene({ item, state }) {
+  const [anchor, setAnchor] = useState(null)
   const selecting = useEditor((editor) => editor.mode === 'select' || editor.mode === 'edit')
+  const liveScale = useLiveNodeOverrides((overrides) => overrides.get(item.id)?.scale)
+  useFrame(() => {
+    const renderedItem = sceneRegistry.nodes.get(item.id) ?? null
+    if (renderedItem !== anchor) setAnchor(renderedItem)
+  })
+  if (!anchor) return null
   const label = powerLabel(state)
-  const height = item.asset.dimensions[1] * item.scale[1]
-  return <group position={item.position}>
-    {state?.value && <group rotation={item.rotation}>
-      <pointLight position={[0, height * 0.88, 0]} color="#ffc28a" intensity={32} distance={3.2} />
-    </group>}
-    <Html position={[0, 1.48, 0]} center style={{ pointerEvents: selecting ? 'auto' : 'none' }}>
+  const height = item.asset.dimensions[1] * (liveScale ?? item.scale)[1]
+  // Pascal's rendered group already follows the building, level, and live item transform.
+  return createPortal(<>
+    {state?.value && <pointLight position={[0, height * 0.88, 0]} color="#ffc28a" intensity={32} distance={3.2} />}
+    <Html position={[0, height + 0.28, 0]} center style={{ pointerEvents: selecting ? 'auto' : 'none' }}>
       <button className="scene-power" data-on={Boolean(state?.value)} disabled={!selecting}
         onClick={(event) => selectPlacedItem(item.id, event)}
         aria-label={`Select floor lamp in 3D · ${label}`} title={powerDescription(state)}
         aria-description={powerDescription(state)}>{label}</button>
     </Html>
-  </group>
+  </>, anchor)
 }
 
 function DemoEditor() {
@@ -172,6 +179,8 @@ function DemoEditor() {
   const [loading, setLoading] = useState(true)
   const { selectedNode } = useSelection()
   const boundItem = useScene((scene) => scene.nodes[Object.keys(bindings)[0]])
+  const boundItemId = boundItem?.id
+  const boundAssetSrc = boundItem?.asset.src
   const lampAssetFailure = useViewer((viewer) => boundItem && viewer.itemLoadFailures[boundItem.id])
   const hasWall = useScene((scene) => Object.values(scene.nodes).some((node) => node.type === 'wall'))
   const hasRoom = useScene((scene) => Object.values(scene.nodes).some((node) => node.type === 'zone'))
@@ -188,10 +197,18 @@ function DemoEditor() {
   }
 
   useEffect(() => {
-    if (lampAssetFailure && boundItem?.asset.src === floorLamp.src) {
-      useScene.getState().updateNode(boundItem.id, { asset: proceduralFloorLamp })
+    if (lampAssetFailure && boundAssetSrc === floorLamp.src) {
+      // Keep the replacement in Pascal's render overrides so autosave retains the authored asset.
+      useLiveNodeOverrides.getState().set(boundItemId, { asset: proceduralFloorLamp })
     }
-  }, [boundItem, lampAssetFailure])
+  }, [boundItemId, boundAssetSrc, lampAssetFailure])
+
+  useEffect(() => () => {
+    const overrides = useLiveNodeOverrides.getState()
+    if (overrides.get(boundItemId)?.asset === proceduralFloorLamp) {
+      overrides.clearFields(boundItemId, ['asset'])
+    }
+  }, [boundItemId, boundAssetSrc])
 
   async function importLayout(event) {
     const [file] = event.target.files
@@ -362,7 +379,7 @@ function DemoEditor() {
               <hemisphereLight args={['#fff3df', '#c7ad8e', 1.75]} />
               <directionalLight position={[3, 6, 4]} color="#fff5e6" intensity={1.1} />
             </>}
-            {boundItem && <LampScene item={boundItem} state={lamp.state} />}
+            {boundItem && <LampScene key={boundItem.id} item={boundItem} state={lamp.state} />}
           </>}
         />
       </LayoutToolsContext.Provider>

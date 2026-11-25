@@ -73,8 +73,10 @@ host above for the backend's CORS origin.
    request **On**. Check both badges, the device list, and the inspector.
 5. For local asset proof, block requests outside the two loopback origins
    (for example, allow those origins in a Playwright Chrome context route
-   and abort the rest). Reload, open 3D, and check that all three `/models/`
-   GLBs load and render. Compare Off and On from the same 3D camera position.
+   and abort the rest). Reload, select **Demo room** if the plan opens at
+   site level, and open 3D. Check that the lounge chair, coffee table, rug,
+   potted plant, and linen floor lamp GLBs load from `/models/` and render.
+   Compare Off and On from the same 3D camera position.
 
 For the demo composition, draw from `(-250, -200)` to `(250, 200)` in plan
 centimetres. Add the items in this order. Set Y rotation in the inspector.
@@ -91,8 +93,9 @@ centimetres. Add the items in this order. Set Y rotation in the inspector.
 The imported Week 13 fixture and previous saves retain the original lamp
 appearance. Newly placed lamps use the locally bundled Kenney model. Pascal's
 model failure report switches the linked lamp to the original procedural GLB
-if its new model is unavailable. The light follows the server-confirmed power
-state.
+for that browser session if its new model is unavailable. The saved layout
+retains its selected model. The light follows the rendered lamp and the
+server-confirmed power state.
 
 ### Import the existing fixture
 
