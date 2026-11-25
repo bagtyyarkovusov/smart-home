@@ -82,6 +82,58 @@ def test_power_on_command_succeeds_and_publishes_confirmed_state(
         )
 
 
+def test_slow_or_failing_command_log_handler_does_not_change_the_outcome(
+    tmp_path: Path, caplog: pytest.LogCaptureFixture
+) -> None:
+    release = Event()
+    dispatch_log_started = Event()
+    publication_logged = Event()
+
+    class SlowAndFailingHandler(logging.Handler):
+        def emit(self, record: logging.LogRecord) -> None:
+            event = json.loads(record.getMessage())["event"]
+            if event == "command.dispatched":
+                dispatch_log_started.set()
+                release.wait(timeout=0.5)
+            elif event == "command.terminal":
+                raise OSError("log sink unavailable")
+            elif event == "command.published":
+                publication_logged.set()
+
+    logger = logging.getLogger("app.commands")
+    handler = SlowAndFailingHandler()
+    caplog.set_level(logging.INFO, logger=logger.name)
+    logger.addHandler(handler)
+    try:
+        with (
+            TestClient(
+                create_app(
+                    database_path=tmp_path / "smart-home.sqlite3",
+                    command_timeout_seconds=0.1,
+                )
+            ) as client,
+            client.websocket_connect("/api/ws") as socket,
+        ):
+            assert socket.receive_json()["type"] == "snapshot"
+            try:
+                response = client.post(
+                    "/api/devices/lamp-7/commands",
+                    json={
+                        "requestId": "slow-log",
+                        "capability": "power",
+                        "value": True,
+                    },
+                )
+                assert response.status_code == 202
+                assert socket.receive_json()["type"] == "command.succeeded"
+                assert dispatch_log_started.wait(timeout=1)
+            finally:
+                release.set()
+            assert publication_logged.wait(timeout=1)
+    finally:
+        logger.removeHandler(handler)
+
+
 def test_timed_out_command_keeps_last_confirmed_state(
     tmp_path: Path, caplog: pytest.LogCaptureFixture
 ) -> None:

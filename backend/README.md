@@ -166,9 +166,14 @@ with connect("ws://127.0.0.1:8000/api/ws") as ws:
         assert json.load(replay) == frame["command"]
     print(json.dumps(frame))
 PY
+```
 
-request_id=$(jq -r '.command.requestId' "$demo_dir/$mode.ws.json")
-jq -Rc --arg id "$request_id" 'fromjson? | select(.requestId == $id)' \
+Stop the server in the first terminal with Ctrl+C so the log worker has time
+to drain. Then compare the saved client frame with the server records.
+
+```sh
+jq -Rc --slurpfile ws "$demo_dir/$mode.ws.json" \
+  'fromjson? | select(.requestId == $ws[0].command.requestId)' \
   "$demo_dir/$mode.log" | tee "$demo_dir/$mode.trace.jsonl"
 jq -es --slurpfile ws "$demo_dir/$mode.ws.json" '
   map(.event) == ["command.accepted", "command.dispatched", "command.terminal",
@@ -185,6 +190,9 @@ Use the terminal and publication records to find the command's stream revision.
 
 The `app.commands` logger emits one JSON object per message. It includes the
 caller-supplied request ID, so use an opaque ID and keep secrets out of IDs.
+One background worker emits records in queue order. Under sustained sink
+backpressure, the queue retains up to 1,024 records and drops new arrivals
+when full. Shutdown allows up to one second for the worker to drain.
 A `command.persistence_retry` warning records the first failed terminal
 write in a retry sequence. `command.published` means Control handed the event
 to the in-process WebSocket hub, even with no subscribers. If a subscriber

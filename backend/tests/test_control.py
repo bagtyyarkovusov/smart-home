@@ -56,6 +56,7 @@ def test_terminal_write_failure_recovers_without_redispatch(
     plan = CommandPlan("lamp-7", "retry", "power", True)
 
     async def run() -> None:
+        await control.recover_pending()
         queue = await events.subscribe()
         with closing(sqlite3.connect(store.database_path)) as connection:
             connection.executescript(

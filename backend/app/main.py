@@ -11,7 +11,6 @@ from fastapi.responses import JSONResponse
 from starlette.convertors import PathConvertor, register_url_convertor
 from starlette.websockets import WebSocket, WebSocketDisconnect
 
-from app.command_logging import log_command
 from app.control import CommandService, UnknownDeviceError
 from app.device import SimulatedLamp
 from app.domain import CommandIntent
@@ -67,8 +66,8 @@ def create_app(
 
     @asynccontextmanager
     async def lifespan(_application: FastAPI):
-        await commands.recover_pending()
         try:
+            await commands.recover_pending()
             yield
         finally:
             await commands.shutdown()
@@ -196,10 +195,6 @@ def create_app(
                 },
             )
         command = acceptance.command.as_dict()
-        log_command(
-            "command.accepted" if acceptance.created else "command.replayed",
-            command,
-        )
         return JSONResponse(
             status_code=202 if acceptance.created else 200,
             content=command,
@@ -232,7 +227,7 @@ def create_app(
                     await websocket.send_json(event)
                 except WebSocketDisconnect as error:
                     if "command" in event:
-                        log_command(
+                        commands.command_log(
                             "command.websocket_send_failed",
                             event["command"],
                             revision=event["revision"],
