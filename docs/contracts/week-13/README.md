@@ -33,6 +33,21 @@ Use JSON bodies and `Content-Type: application/json`. The example files contain 
 
 A PUT that returns `422` or `500` leaves the previous saved document available. Keep the unsaved edits visible and offer retry. To exercise this in the mock, inject a storage failure for one PUT, then retry the same document. A later GET returns the last successful PUT.
 
+## Pascal layout
+
+The [Pascal workspace](../../../frontend/pascal/README.md) reads and writes its
+version 1 envelope at `/api/layouts/week-13/pascal`. The payload has
+`id: "week-13"`, a native Pascal `scene`, and `bindings` keyed by placed-item
+ID. One placed floor lamp can bind to `lamp-7`. Layout reads and saves use the
+same HTTP status and error codes as the v1 endpoint above. The SQLite keys are
+separate, so Pascal saves preserve the Home3D document.
+
+Import the v1 fixture in a blank Pascal workspace. The demo level groups the
+room and `metadata.week13Id` retains the original room, wall and placed-item
+IDs alongside the native IDs. The layout ID, furniture template ID and device
+ID retain their original values. Pascal uses the same floor axes as the 3D
+mapping above, with endpoints in metres and lamp yaw in radians.
+
 ## Lamp HTTP
 
 The [lamp examples](lamp-scenarios.json) contain independent success and timeout runs from `initialState`. Each example names the exact request or response body.

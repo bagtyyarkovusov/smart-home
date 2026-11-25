@@ -4,6 +4,8 @@
 
 ## Technology decision
 
+[ADR 0001](adr/0001-pascal-week-13-demo.md) records the editor choice for the integrated Week 13 demo. The Home3D design below describes the original Route B baseline.
+
 Adapt **Home3D** as the Presentation layer using the course guide's route B. Keep its **React, Vite, Zustand, and Three.js** stack. Use a single **FastAPI** backend, **SQLite** for the single-host demo, **HTTP** for requests and snapshots, and **WebSocket** for live updates. Implement a simulated device adapter inside the backend for repeatable success, rejection, delay, and timeout. The adapter interface also gives the team a place to add hardware.
 
 Home3D provides wall editing, furniture placement, selection, rotation, undo/redo, and 2D and 3D views of the same design. SQLite simplifies one-command startup for a single backend process. A deployment with multiple independent backend instances would require revisiting persistence and event distribution. Performance is unmeasured.
