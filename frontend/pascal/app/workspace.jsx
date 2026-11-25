@@ -1,14 +1,14 @@
 import { ItemNode, loadPlugin, useScene } from '@pascal-app/core'
 import { activateCatalogItem, applySceneGraphToEditor, Editor, getSavedSceneDocument, openEditorView, selectWallDrawVariant, useEditor, useFloorplanRender, useSelection } from '@pascal-app/editor'
 import { builtinPlugin } from '@pascal-app/nodes'
-import { configureViewer, useViewer } from '@pascal-app/viewer'
+import { configureViewer, setSlotDefaultOverrides, useViewer } from '@pascal-app/viewer'
 import { Html } from '@react-three/drei'
 import { createContext, useCallback, useContext, useEffect, useRef, useState } from 'react'
-import { deviceId, floorLamp, importWeek13Layout, layoutDocument, layoutId, startingScene } from './scene.mjs'
+import { deviceId, floorLamp, furnitureTemplates, importWeek13Layout, layoutDocument, layoutId, proceduralFloorLamp, startingScene } from './scene.mjs'
 import { api, useLamp } from './use-lamp'
 
 const endpoint = `${api}/api/layouts/${layoutId}/pascal`
-const lampDragType = 'application/x-smart-home-floor-lamp'
+const furnitureDragType = 'application/x-smart-home-furniture'
 const LayoutToolsContext = createContext(null)
 const sidebarTabs = [{ id: 'smart-home-layout', label: 'Layout tools', component: LayoutTools }]
 const commandLabels = {
@@ -28,6 +28,8 @@ export default function Workspace() {
   const [error, setError] = useState('')
   useEffect(() => {
     configureViewer({ assetsBaseUrl: window.location.origin, iconsBaseUrl: '/icons' })
+    // Unpainted demo rooms use solid finishes so they render without texture downloads.
+    setSlotDefaultOverrides({ 'library:concrete-drywall': '#efe7da', 'library:wood-woodplank48': '#ae896d' })
     plugin ??= loadPlugin(builtinPlugin)
     plugin.then(() => setReady(true), (failure) => setError(String(failure)))
   }, [])
@@ -62,37 +64,51 @@ function powerDescription(state) {
   return state ? `Confirmed at ${state.updatedAt}` : 'Waiting for confirmed state'
 }
 
-function selectLamp(id, event) {
+function selectPlacedItem(id, event) {
   event?.stopPropagation()
   useEditor.getState().setMode('select')
   useViewer.getState().setSelection({ zoneId: null, selectedIds: [id] })
 }
 
 function LayoutTools() {
-  const { canPlace, placeLamp, placeAt } = useContext(LayoutToolsContext)
+  const { drawRoom, canPlace, startPlacement, placeAt } = useContext(LayoutToolsContext)
+  const [templateId, setTemplateId] = useState(floorLamp.id)
   const coordinates = useRef(null)
-  return <section className="lamp-tools" aria-label="Layout tools" onKeyDown={(event) => {
+  const template = furnitureTemplates.find((asset) => asset.id === templateId && canPlace(asset))
+    ?? furnitureTemplates.find(canPlace)
+  return <section className="furniture-tools" aria-label="Layout tools" onKeyDown={(event) => {
     if (event.key === ' ' && event.target instanceof HTMLButtonElement) event.stopPropagation()
   }}>
-    <button type="button" disabled={!canPlace} draggable={canPlace}
-      aria-describedby="lamp-placement-help"
-      onDragStart={(event) => {
-        event.dataTransfer.setData(lampDragType, deviceId)
-        event.dataTransfer.effectAllowed = 'copy'
-      }}
-      onClick={(event) => {
-        if (event.detail === 0) coordinates.current.focus()
-        else placeLamp()
-      }}>Add floor lamp</button>
-    <p id="lamp-placement-help">Click or drag onto the plan, or enter coordinates.</p>
+    <button className="draw-room" type="button" disabled={!template} onClick={drawRoom}>Draw room</button>
+    <div className="furniture-templates">
+      {furnitureTemplates.map((asset) => <button key={asset.id} type="button"
+        disabled={!canPlace(asset)} draggable={canPlace(asset)} aria-describedby="furniture-placement-help"
+        onDragStart={(event) => {
+          event.dataTransfer.setData(furnitureDragType, asset.id)
+          event.dataTransfer.effectAllowed = 'copy'
+        }}
+        onClick={(event) => {
+          setTemplateId(asset.id)
+          if (event.detail === 0) coordinates.current.focus()
+          else startPlacement(asset)
+        }}>Add {asset.name.toLowerCase()}</button>)}
+    </div>
+    <p id="furniture-placement-help">Choose an item, then click the plan. You can also drag an item onto the plan or enter coordinates.</p>
     <form onSubmit={(event) => {
       event.preventDefault()
       const fields = new FormData(event.currentTarget)
-      placeAt(Number(fields.get('x')) / 100, Number(fields.get('z')) / 100)
+      if (template) placeAt(template, Number(fields.get('x')) / 100, Number(fields.get('z')) / 100)
     }}>
-      <label>X (cm)<input ref={coordinates} name="x" type="number" step="any" defaultValue="0" required disabled={!canPlace} /></label>
-      <label>Z (cm)<input name="z" type="number" step="any" defaultValue="0" required disabled={!canPlace} /></label>
-      <button disabled={!canPlace}>Place at coordinates</button>
+      <label>Item at coordinates
+        <select value={template?.id ?? floorLamp.id} disabled={!template}
+          onChange={(event) => setTemplateId(event.target.value)}>
+          {furnitureTemplates.map((asset) => <option key={asset.id} value={asset.id}
+            disabled={!canPlace(asset)}>{asset.name}</option>)}
+        </select>
+      </label>
+      <label>X (cm)<input ref={coordinates} name="x" type="number" step="any" defaultValue="0" required disabled={!template} /></label>
+      <label>Z (cm)<input name="z" type="number" step="any" defaultValue="0" required disabled={!template} /></label>
+      <button disabled={!template}>Place at coordinates</button>
     </form>
   </section>
 }
@@ -110,11 +126,11 @@ function LampPlan({ item, state }) {
       <g className="plan-power" role="button" tabIndex={selecting ? 0 : -1}
         aria-label={`Select floor lamp in 2D · ${label}`} aria-description={powerDescription(state)}
         pointerEvents={selecting ? 'auto' : 'none'}
-        onClick={(event) => selectLamp(item.id, event)}
+        onClick={(event) => selectPlacedItem(item.id, event)}
         onKeyDown={(event) => {
           if (event.key === 'Enter' || event.key === ' ') {
             event.preventDefault()
-            selectLamp(item.id, event)
+            selectPlacedItem(item.id, event)
           }
         }}>
         <title>{powerDescription(state)}</title>
@@ -128,14 +144,14 @@ function LampPlan({ item, state }) {
 function LampScene({ item, state }) {
   const selecting = useEditor((editor) => editor.mode === 'select' || editor.mode === 'edit')
   const label = powerLabel(state)
+  const height = item.asset.dimensions[1] * item.scale[1]
   return <group position={item.position}>
-    {state?.value && <mesh position={[0, 1.22, 0]} raycast={() => null}>
-      <sphereGeometry args={[0.1, 12, 8]} />
-      <meshBasicMaterial color="#ffcf64" />
-    </mesh>}
+    {state?.value && <group rotation={item.rotation}>
+      <pointLight position={[0, height * 0.88, 0]} color="#ffc28a" intensity={32} distance={3.2} />
+    </group>}
     <Html position={[0, 1.48, 0]} center style={{ pointerEvents: selecting ? 'auto' : 'none' }}>
       <button className="scene-power" data-on={Boolean(state?.value)} disabled={!selecting}
-        onClick={(event) => selectLamp(item.id, event)}
+        onClick={(event) => selectPlacedItem(item.id, event)}
         aria-label={`Select floor lamp in 3D · ${label}`} title={powerDescription(state)}
         aria-description={powerDescription(state)}>{label}</button>
     </Html>
@@ -156,7 +172,9 @@ function DemoEditor() {
   const [loading, setLoading] = useState(true)
   const { selectedNode } = useSelection()
   const boundItem = useScene((scene) => scene.nodes[Object.keys(bindings)[0]])
+  const lampAssetFailure = useViewer((viewer) => boundItem && viewer.itemLoadFailures[boundItem.id])
   const hasWall = useScene((scene) => Object.values(scene.nodes).some((node) => node.type === 'wall'))
+  const hasRoom = useScene((scene) => Object.values(scene.nodes).some((node) => node.type === 'zone'))
   const hasGeometry = useScene((scene) => Object.values(scene.nodes).some(
     (node) => !['site', 'building', 'level'].includes(node.type),
   ))
@@ -168,6 +186,12 @@ function DemoEditor() {
     bindingRef.current = next
     setBindings(next)
   }
+
+  useEffect(() => {
+    if (lampAssetFailure && boundItem?.asset.src === floorLamp.src) {
+      useScene.getState().updateNode(boundItem.id, { asset: proceduralFloorLamp })
+    }
+  }, [boundItem, lampAssetFailure])
 
   async function importLayout(event) {
     const [file] = event.target.files
@@ -184,18 +208,22 @@ function DemoEditor() {
     }
   }
 
-  function drawWall() {
+  function drawWalls(variant) {
     openEditorView('2d')
-    selectWallDrawVariant('walls')
+    selectWallDrawVariant(variant)
     useEditor.getState().setTool('wall')
   }
 
-  function placeLamp() {
+  function canPlace(asset) {
+    return !loading && (asset.id !== floorLamp.id || !boundItem)
+  }
+
+  function startPlacement(asset) {
     openEditorView('2d')
     // Pascal's item placement tool runs in the 3D pane and accepts plan clicks.
     openEditorView('3d', { beside: true })
-    placingLamp.current = getSavedSceneDocument().nodes
-    activateCatalogItem(floorLamp)
+    placingLamp.current = asset.id === floorLamp.id ? getSavedSceneDocument().nodes : null
+    activateCatalogItem(asset)
   }
 
   function bindLamp(item) {
@@ -203,28 +231,30 @@ function DemoEditor() {
     setSaveStatus('pending')
   }
 
-  function placeAt(x, z) {
+  function placeAt(asset, x, z) {
     const scene = useScene.getState()
     const levelId = useViewer.getState().selection.levelId ??
       Object.values(scene.nodes).find(({ type }) => type === 'level')?.id
-    if (!levelId || boundItem || !Number.isFinite(x) || !Number.isFinite(z)) return
+    if (!levelId || !canPlace(asset) || !Number.isFinite(x) || !Number.isFinite(z)) return
     placingLamp.current = null
     useEditor.getState().setMode('select')
-    const item = ItemNode.parse({ asset: floorLamp, name: floorLamp.name, position: [x, 0, z] })
+    const item = ItemNode.parse({ asset, name: asset.name, position: [x, 0, z] })
     scene.createNode(item, levelId)
-    bindLamp(item)
-    selectLamp(item.id)
+    if (asset.id === floorLamp.id) bindLamp(item)
+    selectPlacedItem(item.id)
   }
 
-  function acceptLampDrop(event) {
-    if (loading || boundItem || !event.dataTransfer.types.includes(lampDragType)) return
+  function acceptFurnitureDrop(event) {
+    if (loading || !event.dataTransfer.types.includes(furnitureDragType)) return
     const matrix = event.target.closest('svg')?.querySelector('[data-floorplan-scene]')?.getScreenCTM()
     if (!matrix) return
     event.preventDefault()
     event.dataTransfer.dropEffect = 'copy'
     if (event.type === 'drop') {
+      const asset = furnitureTemplates.find(({ id }) => id === event.dataTransfer.getData(furnitureDragType))
+      if (!asset) return
       const point = new DOMPoint(event.clientX, event.clientY).matrixTransform(matrix.inverse())
-      placeAt(point.x, point.y)
+      placeAt(asset, point.x, point.y)
     }
   }
 
@@ -279,7 +309,7 @@ function DemoEditor() {
     <header className="host-bar">
       <strong>Smart Home</strong>
       <div className="layout-tools" aria-label="Layout tools">
-        {hasWall && <button disabled={loading} onClick={drawWall}>Draw wall</button>}
+        {hasWall && <button disabled={loading} onClick={() => drawWalls('walls')}>Draw wall</button>}
         {!hasGeometry && <>
           <button disabled={loading} onClick={() => importInput.current.click()}>Import Week 13 layout</button>
           <input ref={importInput} type="file" hidden accept=".json,application/json" onChange={importLayout} />
@@ -305,14 +335,14 @@ function DemoEditor() {
     <section className="device-list" aria-label="Device list">
       <strong>Devices</strong>
       {boundItem ? <ul><li>
-        <button onClick={(event) => selectLamp(boundItem.id, event)}>Floor lamp · {deviceId}</button>
+        <button onClick={(event) => selectPlacedItem(boundItem.id, event)}>Floor lamp · {deviceId}</button>
         <b>{powerLabel(lamp.state)}</b>
         {lamp.state && <time dateTime={lamp.state.updatedAt}>{lamp.state.updatedAt}</time>}
       </li></ul> : <span>No linked devices</span>}
       {importError && <span role="alert">{importError}</span>}
     </section>
-    <div className="pascal-stage" onDragOver={acceptLampDrop} onDrop={acceptLampDrop}>
-      <LayoutToolsContext.Provider value={{ canPlace: !loading && !boundItem, placeLamp, placeAt }}>
+    <div className="pascal-stage" onDragOver={acceptFurnitureDrop} onDrop={acceptFurnitureDrop}>
+      <LayoutToolsContext.Provider value={{ drawRoom: () => drawWalls('rectangle'), canPlace, startPlacement, placeAt }}>
         <Editor
           projectId={layoutId}
           layoutVersion="v2"
@@ -326,11 +356,18 @@ function DemoEditor() {
           inspectorFooter={bindings[selectedNode?.id] && <PowerControls item={selectedNode}
             device={bindings[selectedNode.id]} lamp={lamp} />}
           floorplanSceneSlot={boundItem && <LampPlan item={boundItem} state={lamp.state} />}
-          viewerSceneSlot={boundItem && <LampScene item={boundItem} state={lamp.state} />}
+          viewerSceneSlot={<>
+            {hasRoom && <>
+              {/* Fill the cutaway from its open side while Pascal supplies daylight shadows. */}
+              <hemisphereLight args={['#fff3df', '#c7ad8e', 1.75]} />
+              <directionalLight position={[3, 6, 4]} color="#fff5e6" intensity={1.1} />
+            </>}
+            {boundItem && <LampScene item={boundItem} state={lamp.state} />}
+          </>}
         />
       </LayoutToolsContext.Provider>
       {!loading && !hasWall && !drawing && (
-        <button className="empty-draw" onClick={drawWall}>Draw wall</button>
+        <button className="empty-draw" onClick={() => drawWalls('walls')}>Draw wall</button>
       )}
     </div>
   </main>

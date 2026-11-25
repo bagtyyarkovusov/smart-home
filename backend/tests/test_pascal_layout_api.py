@@ -11,7 +11,7 @@ LEGACY_PATH = "/api/layouts/week-13"
 FIXTURE = Path(__file__).resolve().parents[2] / "docs/contracts/week-13/layout.v1.json"
 
 
-def test_pascal_layout_survives_restart_beside_the_home3d_layout(tmp_path):
+def test_furnished_pascal_layout_survives_restart_beside_the_home3d_layout(tmp_path):
     database_path = tmp_path / "smart-home.sqlite3"
     legacy = json.loads(FIXTURE.read_text())
     document = {
@@ -36,7 +36,12 @@ def test_pascal_layout_survives_restart_beside_the_home3d_layout(tmp_path):
                     "id": "level_demo",
                     "type": "level",
                     "parentId": "building_demo",
-                    "children": ["item_demo-lamp", "item_x", "wall_demo"],
+                    "children": [
+                        "item_demo-lamp",
+                        "item_stool",
+                        "item_bench",
+                        "wall_demo",
+                    ],
                 },
                 "item_demo-lamp": {
                     "id": "item_demo-lamp",
@@ -60,10 +65,23 @@ def test_pascal_layout_survives_restart_beside_the_home3d_layout(tmp_path):
         "bindings": {"item_demo-lamp": "lamp-7"},
     }
     nodes = document["scene"]["nodes"]
-    nodes["item_x"] = nodes["item_demo-lamp"] | {
-        "id": "item_x",
-        "position": [-2.05, 0, 0.9],
-    }
+    for name, dimensions, position, rotation in (
+        ("stool", [0.48, 0.45, 0.48], [-2.05, 0, 0.9], [0, -0.78, 0]),
+        ("bench", [1.2, 0.46, 0.4], [-1.1, 0, 1.7], [0, 1.57, 0]),
+    ):
+        key = f"item_{name}"
+        nodes[key] = {
+            "id": key,
+            "type": "item",
+            "parentId": "level_demo",
+            "asset": {
+                "id": name,
+                "dimensions": dimensions,
+                "src": f"/models/{name}.glb",
+            },
+            "position": position,
+            "rotation": rotation,
+        }
 
     with TestClient(create_app(database_path)) as client:
         assert client.put(LEGACY_PATH, json=legacy).status_code == 200
@@ -71,9 +89,14 @@ def test_pascal_layout_survives_restart_beside_the_home3d_layout(tmp_path):
         assert client.put(PASCAL_PATH, json=document).json() == document
         invalid = document | {"bindings": {"item_missing": "lamp-7"}}
         assert client.put(PASCAL_PATH, json=invalid).status_code == 422
-        copied = document | {
-            "bindings": {"item_demo-lamp": "lamp-7", "item_x": "lamp-7"}
-        }
+        for key in ("item_stool", "item_bench"):
+            decorative = document | {"bindings": {key: "lamp-7"}}
+            assert client.put(PASCAL_PATH, json=decorative).status_code == 422
+        copied = deepcopy(document)
+        copied_nodes = copied["scene"]["nodes"]
+        copied_nodes["item_copy"] = copied_nodes["item_demo-lamp"] | {"id": "item_copy"}
+        copied_nodes["level_demo"]["children"].append("item_copy")
+        copied["bindings"]["item_copy"] = "lamp-7"
         assert client.put(PASCAL_PATH, json=copied).status_code == 422
         invalid_root = deepcopy(document)
         invalid_root["scene"]["rootNodeIds"] = ["item_demo-lamp"]
