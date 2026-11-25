@@ -28,6 +28,10 @@ export function useLamp() {
 
   async function recover(pending) {
     if (!pending || inFlight.current !== pending) return
+    if (pending.submitting) {
+      pending.recoverAfterSubmit = true
+      return
+    }
     if (!pending.accepted) {
       await submit(pending)
       return
@@ -91,7 +95,7 @@ export function useLamp() {
   function requestPower(value) {
     if (inFlight.current) return
     const requestId = crypto.randomUUID()
-    const pending = { requestId, value, accepted: false, submitting: false }
+    const pending = { requestId, value, accepted: false, submitting: false, recoverAfterSubmit: false }
     inFlight.current = pending
     setCommand({ requestId, status: 'pending' })
     setError('')
@@ -118,19 +122,20 @@ export function useLamp() {
         return
       }
       if (!response.ok) throw new Error(`Power request HTTP ${response.status}`)
+      const incoming = await response.json()
+      if (inFlight.current !== pending) return
       setError('')
-      receiveCommand(await response.json())
-      if (inFlight.current === pending) {
-        pending.accepted = true
-        // A reconnect snapshot may have arrived while the HTTP request was in flight.
-        void recover(pending)
-      }
+      pending.accepted = true
+      receiveCommand(incoming)
     } catch {
       if (inFlight.current === pending) {
         setError('Could not confirm command acceptance. Check command status to retry.')
       }
     } finally {
       pending.submitting = false
+      const shouldRecover = pending.accepted || pending.recoverAfterSubmit
+      pending.recoverAfterSubmit = false
+      if (shouldRecover && inFlight.current === pending) void recover(pending)
     }
   }
 

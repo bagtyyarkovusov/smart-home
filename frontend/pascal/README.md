@@ -39,12 +39,13 @@ host above for the backend's CORS origin.
 
 ## Draw, save and reopen
 
-1. Close the Pascal Plugins panel if it is open. Choose **Draw wall**, click
-   two endpoints, then press Esc.
-2. Choose **Add floor lamp**. When the placement preview appears in split
-   view, click on the plan to place the lamp and bind it to `lamp-7`. Select
-   it from the device list or either badge. Expand the inspector if it is
-   collapsed. Use **Position** and **Rotation** to set the lamp's transform.
+1. Choose **Draw wall**, click two endpoints, then press Esc.
+2. In **Layout tools**, click **Add floor lamp**, then click on the plan.
+   You can also drag **Add floor lamp** onto the plan or enter coordinates
+   with the keyboard and activate **Place at coordinates**. Each path binds
+   the placed lamp to `lamp-7`. Select it from the device list or either badge.
+   Expand the inspector if it is collapsed. Set **Position** in centimetres
+   and **Rotation** in degrees.
 3. Select **Save layout** and wait for **Saved**. Stop Uvicorn with Ctrl+C and
    run the same command with the same database. Reload Chrome. Compare
    `GET http://127.0.0.1:8160/api/layouts/week-13/pascal` before and after
@@ -105,8 +106,9 @@ The workspace comes from [Pascal evaluation PR #17](https://github.com/bagtyyark
 and uses the [official embedded editor](https://www.npmjs.com/package/@pascal-app/editor/v/1.1.6)
 with the [Next.js host reference](https://github.com/pascalorg/editor/tree/1580a95098016b725f50daea87b2a8bc372046e9/apps/editor).
 The postinstall script fixes the published editor's workspace-only TypeScript
-configuration. The optional `@emnapi/wasi-threads` pin keeps npm's clean install
-aligned with its optional WASM tree.
+configuration and converts the pinned item inspector's position inputs to
+centimetres. Pascal's scene still stores metres. The optional
+`@emnapi/wasi-threads` pin keeps npm's clean install aligned with its optional WASM tree.
 
 The bundled Pascal UI icons and cursor are from `apps/editor/public` at the pinned
 Next.js host reference above. They retain the [upstream MIT notice](public/icons/LICENSE-PASCAL.txt).

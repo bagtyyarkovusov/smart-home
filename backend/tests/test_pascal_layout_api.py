@@ -1,4 +1,5 @@
 import json
+from copy import deepcopy
 from pathlib import Path
 
 from fastapi.testclient import TestClient
@@ -17,16 +18,42 @@ def test_pascal_layout_survives_restart_beside_the_home3d_layout(tmp_path):
         "version": 1,
         "id": "week-13",
         "scene": {
-            "rootNodeIds": ["level_demo"],
+            "rootNodeIds": ["site_demo"],
             "hasExplicitPluginInstallState": False,
             "nodes": {
-                "level_demo": {"id": "level_demo", "type": "level"},
+                "site_demo": {
+                    "id": "site_demo",
+                    "type": "site",
+                    "children": ["building_demo"],
+                },
+                "building_demo": {
+                    "id": "building_demo",
+                    "type": "building",
+                    "parentId": "site_demo",
+                    "children": ["level_demo"],
+                },
+                "level_demo": {
+                    "id": "level_demo",
+                    "type": "level",
+                    "parentId": "building_demo",
+                    "children": ["item_demo-lamp", "item_x", "wall_demo"],
+                },
                 "item_demo-lamp": {
                     "id": "item_demo-lamp",
                     "type": "item",
+                    "parentId": "level_demo",
                     "asset": {"id": "floor-lamp"},
                     "position": [-2.7, 0, 0.9],
                     "rotation": [0, -0.52, 0],
+                },
+                "wall_demo": {
+                    "id": "wall_demo",
+                    "type": "wall",
+                    "parentId": "level_demo",
+                    "start": [0, 0],
+                    "end": [2, 0],
+                    "height": 2.4,
+                    "thickness": 0.15,
                 },
             },
         },
@@ -48,6 +75,19 @@ def test_pascal_layout_survives_restart_beside_the_home3d_layout(tmp_path):
             "bindings": {"item_demo-lamp": "lamp-7", "item_x": "lamp-7"}
         }
         assert client.put(PASCAL_PATH, json=copied).status_code == 422
+        invalid_root = deepcopy(document)
+        invalid_root["scene"]["rootNodeIds"] = ["item_demo-lamp"]
+        assert client.put(PASCAL_PATH, json=invalid_root).status_code == 422
+        invalid_hierarchy = deepcopy(document)
+        invalid_hierarchy["scene"]["nodes"]["building_demo"]["children"] = []
+        assert client.put(PASCAL_PATH, json=invalid_hierarchy).status_code == 422
+        invalid_lamp = deepcopy(document)
+        del invalid_lamp["scene"]["nodes"]["item_demo-lamp"]["position"]
+        assert client.put(PASCAL_PATH, json=invalid_lamp).status_code == 422
+        invalid_wall = deepcopy(document)
+        invalid_wall["scene"]["nodes"]["wall_demo"]["end"] = ["2", 0]
+        assert client.put(PASCAL_PATH, json=invalid_wall).status_code == 422
+        assert client.get(PASCAL_PATH).json() == document
 
     with TestClient(create_app(database_path)) as client:
         assert client.get(PASCAL_PATH).json() == document

@@ -23,13 +23,14 @@ body { margin: 0; color: #172a3a; }
 body { font-family: var(--font-sans); }
 .workspace { height: 100dvh; }
 .host-bar { display: flex; align-items: center; gap: 12px; padding: 6px 12px; }
-.host-bar button, .power-panel button {
+.host-bar button, .power-panel button, .lamp-tools button, .lamp-tools input {
   border: 1px solid #d7e0e8;
   border-radius: 5px;
   padding: 3px 8px;
   cursor: pointer;
 }
-.host-bar button:focus-visible, .power-panel button:focus-visible {
+.host-bar button:focus-visible, .power-panel button:focus-visible,
+.lamp-tools button:focus-visible, .lamp-tools input:focus-visible {
   outline: 2px solid #2457b8;
   outline-offset: 2px;
 }
@@ -38,7 +39,12 @@ body { font-family: var(--font-sans); }
 .workspace { display: flex; flex-direction: column; }
 .pascal-stage { flex: 1; min-height: 0; position: relative; }
 .host-bar { min-height: 44px; border-bottom: 1px solid var(--border); font-size: 14px; }
-.host-bar button:disabled, .power-panel button:disabled { opacity: .5; cursor: default; }
+.host-bar button:disabled, .power-panel button:disabled, .lamp-tools button:disabled { opacity: .5; cursor: default; }
+.lamp-tools { display: grid; justify-items: start; gap: 8px; padding: 12px; font-size: 13px; }
+.lamp-tools p { color: #40576a; }
+.lamp-tools form { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
+.lamp-tools input { display: block; width: 100%; cursor: text; }
+.lamp-tools form button { grid-column: span 2; justify-self: start; }
 .connection { margin-left: auto; display: flex; align-items: center; gap: 8px; }
 .power-panel { font-size: 13px; background: #eef2f5; }
 .power-panel time { color: #40576a; }

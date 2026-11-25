@@ -1,13 +1,16 @@
-import { loadPlugin, useScene } from '@pascal-app/core'
+import { ItemNode, loadPlugin, useScene } from '@pascal-app/core'
 import { activateCatalogItem, applySceneGraphToEditor, Editor, getSavedSceneDocument, openEditorView, selectWallDrawVariant, useEditor, useFloorplanRender, useSelection } from '@pascal-app/editor'
 import { builtinPlugin } from '@pascal-app/nodes'
 import { configureViewer, useViewer } from '@pascal-app/viewer'
 import { Html } from '@react-three/drei'
-import { useCallback, useEffect, useRef, useState } from 'react'
+import { createContext, useCallback, useContext, useEffect, useRef, useState } from 'react'
 import { deviceId, floorLamp, importWeek13Layout, layoutDocument, layoutId, startingScene } from './scene.mjs'
 import { api, useLamp } from './use-lamp'
 
 const endpoint = `${api}/api/layouts/${layoutId}/pascal`
+const lampDragType = 'application/x-smart-home-floor-lamp'
+const LayoutToolsContext = createContext(null)
+const sidebarTabs = [{ id: 'smart-home-layout', label: 'Layout tools', component: LayoutTools }]
 const commandLabels = {
   pending: 'Command pending',
   succeeded: 'Command confirmed',
@@ -60,9 +63,38 @@ function powerDescription(state) {
 }
 
 function selectLamp(id, event) {
-  event.stopPropagation()
+  event?.stopPropagation()
   useEditor.getState().setMode('select')
   useViewer.getState().setSelection({ zoneId: null, selectedIds: [id] })
+}
+
+function LayoutTools() {
+  const { canPlace, placeLamp, placeAt } = useContext(LayoutToolsContext)
+  const coordinates = useRef(null)
+  return <section className="lamp-tools" aria-label="Layout tools" onKeyDown={(event) => {
+    if (event.key === ' ' && event.target instanceof HTMLButtonElement) event.stopPropagation()
+  }}>
+    <button type="button" disabled={!canPlace} draggable={canPlace}
+      aria-describedby="lamp-placement-help"
+      onDragStart={(event) => {
+        event.dataTransfer.setData(lampDragType, deviceId)
+        event.dataTransfer.effectAllowed = 'copy'
+      }}
+      onClick={(event) => {
+        if (event.detail === 0) coordinates.current.focus()
+        else placeLamp()
+      }}>Add floor lamp</button>
+    <p id="lamp-placement-help">Click or drag onto the plan, or enter coordinates.</p>
+    <form onSubmit={(event) => {
+      event.preventDefault()
+      const fields = new FormData(event.currentTarget)
+      placeAt(Number(fields.get('x')) / 100, Number(fields.get('z')) / 100)
+    }}>
+      <label>X (cm)<input ref={coordinates} name="x" type="number" step="any" defaultValue="0" required disabled={!canPlace} /></label>
+      <label>Z (cm)<input name="z" type="number" step="any" defaultValue="0" required disabled={!canPlace} /></label>
+      <button disabled={!canPlace}>Place at coordinates</button>
+    </form>
+  </section>
 }
 
 function LampPlan({ item, state }) {
@@ -166,6 +198,36 @@ function DemoEditor() {
     activateCatalogItem(floorLamp)
   }
 
+  function bindLamp(item) {
+    updateBindings({ [item.id]: deviceId })
+    setSaveStatus('pending')
+  }
+
+  function placeAt(x, z) {
+    const scene = useScene.getState()
+    const levelId = useViewer.getState().selection.levelId ??
+      Object.values(scene.nodes).find(({ type }) => type === 'level')?.id
+    if (!levelId || boundItem || !Number.isFinite(x) || !Number.isFinite(z)) return
+    placingLamp.current = null
+    useEditor.getState().setMode('select')
+    const item = ItemNode.parse({ asset: floorLamp, name: floorLamp.name, position: [x, 0, z] })
+    scene.createNode(item, levelId)
+    bindLamp(item)
+    selectLamp(item.id)
+  }
+
+  function acceptLampDrop(event) {
+    if (loading || boundItem || !event.dataTransfer.types.includes(lampDragType)) return
+    const matrix = event.target.closest('svg')?.querySelector('[data-floorplan-scene]')?.getScreenCTM()
+    if (!matrix) return
+    event.preventDefault()
+    event.dataTransfer.dropEffect = 'copy'
+    if (event.type === 'drop') {
+      const point = new DOMPoint(event.clientX, event.clientY).matrixTransform(matrix.inverse())
+      placeAt(point.x, point.y)
+    }
+  }
+
   useEffect(() => {
     const previousNodes = placingLamp.current
     if (!previousNodes || (mode === 'build' && tool === 'item')) return
@@ -173,8 +235,7 @@ function DemoEditor() {
     // A completed single placement selects its committed item before leaving build mode.
     if (mode === 'select' && selectedNode?.type === 'item' &&
         selectedNode.asset.id === floorLamp.id && !previousNodes[selectedNode.id]) {
-      updateBindings({ [selectedNode.id]: deviceId })
-      setSaveStatus('pending')
+      bindLamp(selectedNode)
     }
   }, [mode, tool, selectedNode])
 
@@ -219,7 +280,6 @@ function DemoEditor() {
       <strong>Smart Home</strong>
       <div className="layout-tools" aria-label="Layout tools">
         {hasWall && <button disabled={loading} onClick={drawWall}>Draw wall</button>}
-        <button disabled={loading || Boolean(boundItem)} onClick={placeLamp}>Add floor lamp</button>
         {!hasGeometry && <>
           <button disabled={loading} onClick={() => importInput.current.click()}>Import Week 13 layout</button>
           <input ref={importInput} type="file" hidden accept=".json,application/json" onChange={importLayout} />
@@ -251,20 +311,24 @@ function DemoEditor() {
       </li></ul> : <span>No linked devices</span>}
       {importError && <span role="alert">{importError}</span>}
     </section>
-    <div className="pascal-stage">
-      <Editor
-        projectId={layoutId}
-        layoutVersion="v2"
-        actionMenuPlacement="top"
-        onLoad={load}
-        onSave={save}
-        onSaveStatusChange={setSaveStatus}
-        onLoaderChange={setLoading}
-        inspectorFooter={bindings[selectedNode?.id] && <PowerControls item={selectedNode}
-          device={bindings[selectedNode.id]} lamp={lamp} />}
-        floorplanSceneSlot={boundItem && <LampPlan item={boundItem} state={lamp.state} />}
-        viewerSceneSlot={boundItem && <LampScene item={boundItem} state={lamp.state} />}
-      />
+    <div className="pascal-stage" onDragOver={acceptLampDrop} onDrop={acceptLampDrop}>
+      <LayoutToolsContext.Provider value={{ canPlace: !loading && !boundItem, placeLamp, placeAt }}>
+        <Editor
+          projectId={layoutId}
+          layoutVersion="v2"
+          actionMenuPlacement="top"
+          sidebarTabs={sidebarTabs}
+          columnTabId="smart-home-layout"
+          onLoad={load}
+          onSave={save}
+          onSaveStatusChange={setSaveStatus}
+          onLoaderChange={setLoading}
+          inspectorFooter={bindings[selectedNode?.id] && <PowerControls item={selectedNode}
+            device={bindings[selectedNode.id]} lamp={lamp} />}
+          floorplanSceneSlot={boundItem && <LampPlan item={boundItem} state={lamp.state} />}
+          viewerSceneSlot={boundItem && <LampScene item={boundItem} state={lamp.state} />}
+        />
+      </LayoutToolsContext.Provider>
       {!loading && !hasWall && !drawing && (
         <button className="empty-draw" onClick={drawWall}>Draw wall</button>
       )}
