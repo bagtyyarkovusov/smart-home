@@ -40,6 +40,7 @@ def test_furnished_pascal_layout_survives_restart_beside_the_home3d_layout(tmp_p
                         "item_demo-lamp",
                         "item_stool",
                         "item_bench",
+                        "item_ceramic-vase",
                         "wall_demo",
                     ],
                 },
@@ -68,6 +69,7 @@ def test_furnished_pascal_layout_survives_restart_beside_the_home3d_layout(tmp_p
     for name, dimensions, position, rotation in (
         ("stool", [0.48, 0.45, 0.48], [-2.05, 0, 0.9], [0, -0.78, 0]),
         ("bench", [1.2, 0.46, 0.4], [-1.1, 0, 1.7], [0, 1.57, 0]),
+        ("ceramic-vase", [0.24, 0.32, 0.24], [-1.255, 0, 0.76], [0, 0.78, 0]),
     ):
         key = f"item_{name}"
         nodes[key] = {
@@ -89,7 +91,7 @@ def test_furnished_pascal_layout_survives_restart_beside_the_home3d_layout(tmp_p
         assert client.put(PASCAL_PATH, json=document).json() == document
         invalid = document | {"bindings": {"item_missing": "lamp-7"}}
         assert client.put(PASCAL_PATH, json=invalid).status_code == 422
-        for key in ("item_stool", "item_bench"):
+        for key in ("item_stool", "item_bench", "item_ceramic-vase"):
             decorative = document | {"bindings": {key: "lamp-7"}}
             assert client.put(PASCAL_PATH, json=decorative).status_code == 422
         copied = deepcopy(document)

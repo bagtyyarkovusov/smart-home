@@ -11,38 +11,6 @@ export const proceduralFloorLamp = {
   scale: [1, 1, 0.625], // Fit the evaluation model's 32 cm depth to the 20 cm template.
 }
 
-export const floorLamp = {
-  ...proceduralFloorLamp, src: '/models/linen-floor-lamp.glb', scale: [1, 1, 1],
-}
-
-export const furnitureTemplates = [
-  floorLamp,
-  {
-    name: 'Lounge chair', id: 'lounge-chair', dimensions: [1, 1.17, 1.19],
-    category: 'furniture', thumbnail: '', src: '/models/lounge-chair.glb',
-  },
-  {
-    name: 'Coffee table', id: 'coffee-table', dimensions: [1.2, 0.39, 0.6],
-    category: 'furniture', thumbnail: '', src: '/models/coffee-table.glb',
-  },
-  {
-    name: 'Rug', id: 'rug', dimensions: [2.6, 0.016, 1.8],
-    category: 'furniture', thumbnail: '', src: '/models/rug.glb',
-  },
-  {
-    name: 'Potted plant', id: 'potted-plant', dimensions: [0.17, 0.27, 0.19],
-    category: 'furniture', thumbnail: '', src: '/models/potted-plant.glb',
-  },
-  {
-    name: 'Stool', id: 'stool', dimensions: [0.48, 0.45, 0.48],
-    category: 'furniture', thumbnail: '', src: '/models/stool.glb',
-  },
-  {
-    name: 'Bench', id: 'bench', dimensions: [1.2, 0.46, 0.4],
-    category: 'furniture', thumbnail: '', src: '/models/bench.glb',
-  },
-]
-
 export function startingScene(children = [], roomId = 'room-1') {
   // A single wall doesn't enclose a Pascal zone. The level groups this demo room.
   const level = LevelNode.parse({

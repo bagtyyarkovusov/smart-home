@@ -39,11 +39,13 @@ host above for the backend's CORS origin.
 
 ## Draw, save and reopen
 
-1. Choose **Draw wall**, click two endpoints, then press Esc.
-2. In **Layout tools**, click **Add floor lamp**, then click on the plan.
-   You can also drag **Add floor lamp** onto the plan or enter coordinates
-   with the keyboard and activate **Place at coordinates**. Each path binds
-   the placed lamp to `lamp-7`. Select it from the device list or either badge.
+1. On the blank plan or under **Layout tools** → **Draw**, choose **Draw wall**,
+   click two endpoints, then press Esc.
+2. In **Layout tools** → **Catalog**, click **Floor lamp**, then click the
+   plan. You can also drag the tile onto the plan. To place with the keyboard,
+   tab to the tile and press Enter or Space to focus **X (cm)**. Fill X and Z
+   and press Enter or activate **Place at coordinates**. Each path binds the
+   placed lamp to `lamp-7`. Select it from the device list or either badge.
    Expand the inspector if it is collapsed. Set **Position** in centimetres
    and **Rotation** in degrees.
 3. Select **Save layout** and wait for **Saved**. Stop Uvicorn with Ctrl+C and
@@ -56,13 +58,13 @@ host above for the backend's CORS origin.
 
 ### Furnish one room
 
-1. In a fresh workspace, choose **Draw room** in **Layout tools** and click
+1. In a fresh workspace, choose **Draw room** under **Draw** and click
    opposite corners of a rectangle in the plan. Press Esc.
-2. In **Layout tools**, add two lounge chairs, a coffee table, a rug, a potted
-   plant, and the floor lamp. The catalog supports
-   plan clicks, drag-and-drop, and **Place at coordinates**. For keyboard
-   placement, activate an **Add** button to focus X, enter X and Z in
-   centimetres, and submit the form. The room can have one linked floor lamp.
+2. Open **Catalog** and place two lounge chairs, a coffee table, a rug, a potted
+   plant, and the floor lamp. Search by name or category, or select a category
+   to narrow the search. **Clear filters** returns to the full catalog. Press Esc
+   or switch to **Draw** to cancel an armed plan placement. Try **Ceramic vase**
+   at X = −125.5 cm and Z = 76 cm using the coordinate form.
 3. Select each placed item in 2D and edit X and Z under **Position**. Rotate
    it under **Rotation**. In **Split**, use **Cutaway** under **3D walls** and
    orbit the 3D camera to show the seating and lamp alongside their plan footprints.
@@ -169,6 +171,7 @@ dependencies. The chair, table, and plant textures have the same authors and
 | [`lounge-chair.glb`](public/models/lounge-chair.glb) | [Mid Century Lounge Chair](https://polyhaven.com/a/mid_century_lounge_chair) by Kuutti Siitonen, [model and textures](https://api.polyhaven.com/files/mid_century_lounge_chair) | 100 × 117 × 119 |
 | [`coffee-table.glb`](public/models/coffee-table.glb) | [Modern Coffee Table 01](https://polyhaven.com/a/modern_coffee_table_01) by Amin, [model and textures](https://api.polyhaven.com/files/modern_coffee_table_01) | 120 × 39 × 60 |
 | [`potted-plant.glb`](public/models/potted-plant.glb) | [Potted Plant 04](https://polyhaven.com/a/potted_plant_04) by James Ray Cock, [model and textures](https://api.polyhaven.com/files/potted_plant_04) | 17 × 27 × 19 |
+| [`ceramic-vase.glb`](public/models/ceramic-vase.glb) | Smart Home's original 48-segment lathed ceramic mesh with a glazed finish, closed base and open lip | 24 × 32 × 24 |
 | [`floor-lamp.glb`](public/models/floor-lamp.glb) | Smart Home's procedural lamp | 40 × 120 × 20 (with template scale) |
 | [`rug.glb`](public/models/rug.glb), [`stool.glb`](public/models/stool.glb), [`bench.glb`](public/models/bench.glb) | Smart Home's original procedural geometry | 260 × 1.6 × 180 / 48 × 45 × 48 / 120 × 46 × 40 |
 
@@ -182,5 +185,28 @@ to a maximum of 512 pixels, embeds them, centers and grounds each mesh in
 metres, turns the table's long edge toward X, and recolors the lamp's original
 materials to brass and warm fabric. Regenerate the procedural assets with
 `python3 scripts/make-models.py`.
+
+### Update the furniture catalog
+
+Add a record to [the catalog](app/furniture-catalog.json) with a stable ID,
+a name, a browse category, and width, height and depth in metres. Bundle a
+self-contained, grounded GLB under `public/models` and reference its local
+URL. Set the local `thumbnail` URL and any Pascal asset fields needed for
+the model, such as `scale` or `tags`. Keep published IDs stable. Saved layouts
+carry the placed item's asset data and its own transform.
+
+Regenerate the bundled WebP thumbnails from the actual GLBs with Blender
+4.5.4 LTS and `cwebp` 1.6.0 on PATH. From `frontend/pascal` run:
+
+```sh
+blender -b -t 6 --python-exit-code 1 --python scripts/render-catalog-thumbnails.py
+npm test
+```
+
+The recipe imports each GLB with its material and template scale, fits a
+three-quarter orthographic camera to the bounds, and lights the model
+against a transparent 256 × 256 image. Low-profile objects use a higher
+camera angle. It encodes the images with `cwebp -q 87 -m 6`. Each thumbnail
+has the same provenance and license as its source model.
 
 Instrument Sans retains the OFL notice.
