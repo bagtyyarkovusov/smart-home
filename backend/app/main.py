@@ -6,6 +6,7 @@ from pathlib import Path
 from anyio import CancelScope, create_task_group
 from fastapi import FastAPI
 from fastapi.exceptions import RequestValidationError
+from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 from starlette.convertors import PathConvertor, register_url_convertor
 from starlette.websockets import WebSocket, WebSocketDisconnect
@@ -13,12 +14,13 @@ from starlette.websockets import WebSocket, WebSocketDisconnect
 from app.control import CommandService, UnknownDeviceError
 from app.device import SimulatedLamp
 from app.domain import CommandIntent
-from app.models import LayoutDocument, PowerCommandRequest
+from app.models import LayoutDocument, PascalLayoutDocument, PowerCommandRequest
 from app.persistence import SqliteStore
 from app.realtime import EventHub
 from app.strategy import ManualCommandStrategy
 
 LAYOUT_ID = "week-13"
+PASCAL_LAYOUT_KEY = "week-13/pascal"
 
 
 class RequestIdConvertor(PathConvertor):
@@ -51,7 +53,8 @@ def create_app(
             os.environ.get("SMART_HOME_COMMAND_TIMEOUT_SECONDS", "1.0")
         )
     device = SimulatedLamp(
-        mode=simulator_mode or os.environ.get("SMART_HOME_SIMULATOR_MODE", "success")
+        mode=simulator_mode or os.environ.get("SMART_HOME_SIMULATOR_MODE", "success"),
+        delay_seconds=float(os.environ.get("SMART_HOME_SIMULATOR_DELAY_SECONDS", "0")),
     )
     commands = CommandService(
         store=store,
@@ -71,6 +74,13 @@ def create_app(
 
     application = FastAPI(title="Smart Home API", lifespan=lifespan)
 
+    application.add_middleware(
+        CORSMiddleware,
+        allow_origins=["http://127.0.0.1:3160"],
+        allow_methods=["GET", "PUT", "POST"],
+        allow_headers=["Content-Type"],
+    )
+
     @application.exception_handler(RequestValidationError)
     async def validation_error_handler(request, _error):
         is_command = "/devices/" in request.url.path
@@ -88,9 +98,8 @@ def create_app(
             },
         )
 
-    @application.get(f"/api/layouts/{LAYOUT_ID}", response_model=None)
-    def get_layout() -> dict[str, object] | JSONResponse:
-        layout = store.get(LAYOUT_ID)
+    def load_layout(key: str) -> dict[str, object] | JSONResponse:
+        layout = store.get(key)
         if layout is None:
             return JSONResponse(
                 status_code=404,
@@ -104,10 +113,9 @@ def create_app(
         # The stricter PUT schema still lets users retrieve previously saved data.
         return layout
 
-    @application.put(f"/api/layouts/{LAYOUT_ID}", response_model=LayoutDocument)
-    def put_layout(document: LayoutDocument) -> LayoutDocument | JSONResponse:
+    def save_layout(key: str, document: dict[str, object]) -> JSONResponse | None:
         try:
-            store.save(LAYOUT_ID, document.model_dump(mode="json"))
+            store.save(key, document)
         except sqlite3.Error:
             return JSONResponse(
                 status_code=500,
@@ -118,7 +126,26 @@ def create_app(
                     }
                 },
             )
-        return document
+        return None
+
+    @application.get(f"/api/layouts/{LAYOUT_ID}", response_model=None)
+    def get_layout() -> dict[str, object] | JSONResponse:
+        return load_layout(LAYOUT_ID)
+
+    @application.put(f"/api/layouts/{LAYOUT_ID}", response_model=LayoutDocument)
+    def put_layout(document: LayoutDocument) -> LayoutDocument | JSONResponse:
+        return save_layout(LAYOUT_ID, document.model_dump(mode="json")) or document
+
+    @application.get(f"/api/layouts/{PASCAL_LAYOUT_KEY}", response_model=None)
+    def get_pascal_layout() -> dict[str, object] | JSONResponse:
+        return load_layout(PASCAL_LAYOUT_KEY)
+
+    @application.put(f"/api/layouts/{PASCAL_LAYOUT_KEY}", response_model=None)
+    def put_pascal_layout(
+        layout: PascalLayoutDocument,
+    ) -> dict[str, object] | JSONResponse:
+        document = layout.model_dump(mode="json", exclude_unset=True)
+        return save_layout(PASCAL_LAYOUT_KEY, document) or document
 
     @application.get("/api/devices/{device_id}/state", response_model=None)
     def get_lamp_state(device_id: str) -> dict[str, object] | JSONResponse:

@@ -4,6 +4,7 @@ from pydantic import (
     BaseModel,
     ConfigDict,
     Field,
+    JsonValue,
     StrictBool,
     field_validator,
     model_validator,
@@ -62,6 +63,46 @@ class LayoutDocument(StrictModel):
                 "Wall and placed item IDs must be unique within the layout."
             )
 
+        return self
+
+
+class PascalScene(BaseModel):
+    model_config = ConfigDict(extra="forbid", allow_inf_nan=False)
+
+    nodes: dict[str, dict[str, JsonValue]]
+    rootNodeIds: list[str]
+    collections: dict[str, JsonValue] | None = None
+    materials: dict[str, JsonValue] | None = None
+    installedPlugins: list[str] | None = None
+    hasExplicitPluginInstallState: bool | None = None
+
+
+class PascalLayoutDocument(StrictModel):
+    version: Literal[1]
+    id: Literal["week-13"]
+    scene: PascalScene
+    bindings: dict[str, Literal["lamp-7"]]
+
+    @model_validator(mode="after")
+    def check_identities(self) -> Self:
+        nodes = self.scene.nodes
+        if any(not key or key != node.get("id") for key, node in nodes.items()):
+            raise ValueError("Each node key must match its ID.")
+        if not self.scene.rootNodeIds or any(
+            key not in nodes for key in self.scene.rootNodeIds
+        ):
+            raise ValueError("Each root must refer to a saved node.")
+        if len(self.bindings) > 1:
+            raise ValueError("Only one placed item can control lamp-7.")
+        for key in self.bindings:
+            node = nodes.get(key, {})
+            asset = node.get("asset")
+            if (
+                node.get("type") != "item"
+                or not isinstance(asset, dict)
+                or asset.get("id") != "floor-lamp"
+            ):
+                raise ValueError("A binding must refer to a placed floor lamp.")
         return self
 
 

@@ -1,0 +1,76 @@
+@import "tailwindcss";
+@import "@pascal-app/viewer/ui/theme.css";
+@source "../node_modules/@pascal-app/editor/src";
+@source "../node_modules/@pascal-app/viewer/dist";
+@source "../node_modules/@pascal-app/nodes/dist";
+
+body { margin: 0; color: #172a3a; }
+
+@font-face {
+  font-family: "Instrument Sans";
+  src: url("/fonts/instrument-sans-latin.woff2") format("woff2");
+  font-display: swap;
+}
+
+:root {
+  --font-sans: "Instrument Sans", system-ui, sans-serif;
+  --background: #fff;
+  --foreground: #172a3a;
+  --border: #d7e0e8;
+  --ring: #2457b8;
+}
+
+body { font-family: var(--font-sans); }
+.workspace { height: 100dvh; }
+.host-bar { display: flex; align-items: center; gap: 12px; padding: 6px 12px; }
+.host-bar button, .power-panel button {
+  border: 1px solid #d7e0e8;
+  border-radius: 5px;
+  padding: 3px 8px;
+  cursor: pointer;
+}
+.host-bar button:focus-visible, .power-panel button:focus-visible {
+  outline: 2px solid #2457b8;
+  outline-offset: 2px;
+}
+.power-panel { padding: 12px; border-top: 1px solid #d7e0e8; }
+
+.workspace { display: flex; flex-direction: column; }
+.pascal-stage { flex: 1; min-height: 0; position: relative; }
+.host-bar { min-height: 44px; border-bottom: 1px solid var(--border); font-size: 14px; }
+.host-bar button:disabled, .power-panel button:disabled { opacity: .5; cursor: default; }
+.connection { margin-left: auto; display: flex; align-items: center; gap: 8px; }
+.power-panel { font-size: 13px; background: #eef2f5; }
+.power-panel time { color: #40576a; }
+.power-actions { display: flex; gap: 6px; margin: 6px 0; }
+.power-actions button { background: #fff; }
+.power-actions button:first-child { background: #2457b8; color: white; }
+.scene-power {
+  display: block; background: #fff; color: #172a3a; border-radius: 4px;
+  padding: 2px 6px; font-size: 12px; border: 1px solid #2457b8;
+}
+.scene-power[data-on="true"] { background: #ffe7a1; border-color: #c47a15; }
+.plan-power, .scene-power { cursor: pointer; }
+.plan-power:focus-visible, .scene-power:focus-visible {
+  outline: 2px solid #2457b8;
+  outline-offset: 2px;
+}
+.layout-tools { display: flex; align-items: center; gap: 4px; }
+.host-bar select { border: 1px solid var(--border); border-radius: 4px; padding: 3px; }
+
+.device-list {
+  display: flex; align-items: center; gap: 12px; min-height: 36px;
+  padding: 4px 12px; border-bottom: 1px solid var(--border); font-size: 13px;
+}
+.device-list li { display: flex; align-items: center; gap: 12px; }
+.device-list button { color: #2457b8; text-decoration: underline; cursor: pointer; }
+.device-list time { color: #40576a; }
+.empty-draw {
+  position: absolute; z-index: 5; top: 50%; left: 50%;
+  transform: translate(-50%, -50%);
+  padding: 6px 12px; border-radius: 5px; background: #2457b8; color: white; cursor: pointer;
+}
+.device-list button:focus-visible, .empty-draw:focus-visible {
+  outline: 2px solid #2457b8;
+  outline-offset: 2px;
+}

@@ -13,7 +13,12 @@ A software-engineering course project for one household. Residents can lay out r
 
 For the Week 10 checkpoint, explain the household problem, show the five layers and walk through one lamp command and its result. The code dependency direction is **Presentation → Strategy → Control → Device**. Data is available through interfaces. Present the four team roles and the Week 13 demo goal.
 
-## Run the Home3D layout editor
+## Run the Week 13 demo
+
+Use the [Pascal workspace and FastAPI startup guide](frontend/pascal/README.md)
+for the supported one-room demo.
+
+## Run the Home3D fallback
 
 Use Node.js 22.12+, npm and Git. From the repository root:
 
