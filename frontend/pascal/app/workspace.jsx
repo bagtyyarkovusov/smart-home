@@ -181,7 +181,6 @@ function DemoEditor() {
   const boundItem = useScene((scene) => scene.nodes[Object.keys(bindings)[0]])
   const boundItemId = boundItem?.id
   const boundAssetSrc = boundItem?.asset.src
-  const lampAssetFailure = useViewer((viewer) => boundItem && viewer.itemLoadFailures[boundItem.id])
   const hasWall = useScene((scene) => Object.values(scene.nodes).some((node) => node.type === 'wall'))
   const hasRoom = useScene((scene) => Object.values(scene.nodes).some((node) => node.type === 'zone'))
   const hasGeometry = useScene((scene) => Object.values(scene.nodes).some(
@@ -197,16 +196,28 @@ function DemoEditor() {
   }
 
   useEffect(() => {
-    if (lampAssetFailure && boundAssetSrc === floorLamp.src) {
-      // Keep the replacement in Pascal's render overrides so autosave retains the authored asset.
-      useLiveNodeOverrides.getState().set(boundItemId, { asset: proceduralFloorLamp })
+    if (boundAssetSrc !== floorLamp.src) return
+    let stopKeepingFallback
+    function keepFallback(overrides) {
+      if (overrides.get(boundItemId)?.asset !== proceduralFloorLamp) {
+        overrides.set(boundItemId, { asset: proceduralFloorLamp })
+      }
     }
-  }, [boundItemId, boundAssetSrc, lampAssetFailure])
-
-  useEffect(() => () => {
-    const overrides = useLiveNodeOverrides.getState()
-    if (overrides.get(boundItemId)?.asset === proceduralFloorLamp) {
-      overrides.clearFields(boundItemId, ['asset'])
+    function onLoadFailure(viewer) {
+      if (stopKeepingFallback || !viewer.itemLoadFailures[boundItemId]) return
+      // Pascal clears the live overrides when a gesture commits. Restore only our asset field.
+      stopKeepingFallback = useLiveNodeOverrides.subscribe(keepFallback)
+      keepFallback(useLiveNodeOverrides.getState())
+    }
+    const stopWatching = useViewer.subscribe(onLoadFailure)
+    onLoadFailure(useViewer.getState())
+    return () => {
+      stopWatching()
+      stopKeepingFallback?.()
+      const overrides = useLiveNodeOverrides.getState()
+      if (overrides.get(boundItemId)?.asset === proceduralFloorLamp) {
+        overrides.clearFields(boundItemId, ['asset'])
+      }
     }
   }, [boundItemId, boundAssetSrc])
 
