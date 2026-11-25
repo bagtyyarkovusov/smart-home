@@ -50,7 +50,11 @@ test('the furnished room templates use self-contained, floor-centered models at 
 })
 
 test('catalog search trims and folds names and category labels and combines filters', () => {
-  assert.deepEqual(filterFurniture('  CHAIR  ', 'Seating').map(({ id }) => id), ['lounge-chair'])
-  assert.deepEqual(filterFurniture('chair', 'Decor'), [])
-  assert.deepEqual(filterFurniture(' lighting ').map(({ id }) => id), ['floor-lamp'])
+  const chair = { name: 'Dining chair', category: 'Seating' }
+  const ornament = { name: 'Miniature chair', category: 'Decor' }
+  const lamp = { name: 'Floor lamp', category: 'Lighting' }
+  const templates = [chair, ornament, lamp]
+  assert.deepEqual(filterFurniture('  CHAIR  ', 'Seating', templates), [chair])
+  assert.deepEqual(filterFurniture('chair', 'Lighting', templates), [])
+  assert.deepEqual(filterFurniture(' lighting ', '', templates), [lamp])
 })

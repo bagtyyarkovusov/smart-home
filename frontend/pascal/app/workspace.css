@@ -38,6 +38,14 @@ body { font-family: var(--font-sans); }
 
 .workspace { display: flex; flex-direction: column; }
 .pascal-stage { flex: 1; min-height: 0; position: relative; }
+/* Keep the linked floor lamp on a level while Pascal previews it in split view. */
+.pascal-stage[data-place-lamp-on-plan] [data-pascal-viewer-3d]::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  z-index: 30;
+  cursor: not-allowed;
+}
 .host-bar { min-height: 44px; border-bottom: 1px solid var(--border); font-size: 14px; }
 .host-bar button:disabled, .power-panel button:disabled, .furniture-tools :disabled { opacity: .5; cursor: default; }
 .furniture-tools {

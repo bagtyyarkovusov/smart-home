@@ -48,6 +48,18 @@ test('manual save and Pascal autosave persist the same scene envelope', () => {
   assert.deepEqual(layoutDocument(manualScene, bindings), layoutDocument(autosavedScene, bindings))
 })
 
+test('a saved layout keeps only the live lamp binding after replacing and restoring the lamp', () => {
+  const { scene } = importWeek13Layout(fixture)
+  const original = scene.nodes.item_imported
+  const replacement = ItemNode.parse({ ...original, id: 'item_replacement' })
+  const knownBindings = { item_imported: 'lamp-7', item_replacement: 'lamp-7' }
+
+  assert.deepEqual(layoutDocument(startingScene([replacement]), knownBindings).bindings, { item_replacement: 'lamp-7' })
+  assert.deepEqual(layoutDocument(startingScene([]), knownBindings).bindings, {})
+  assert.deepEqual(layoutDocument(scene, knownBindings).bindings, { item_imported: 'lamp-7' })
+  assert.deepEqual(layoutDocument(startingScene([original, replacement]), knownBindings).bindings, { item_imported: 'lamp-7' })
+})
+
 test('a configured vase saves its authored asset and exact transform beside the linked lamp', () => {
   const imported = importWeek13Layout(fixture)
   const { wall_imported: wall, item_imported: lamp } = imported.scene.nodes

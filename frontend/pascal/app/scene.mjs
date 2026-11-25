@@ -46,14 +46,22 @@ export function importWeek13Layout(document) {
   }
 }
 
+export function findBoundLamp(nodes, bindings) {
+  const id = Object.keys(bindings).find((id) =>
+    nodes[id]?.type === 'item' && nodes[id].asset.id === proceduralFloorLamp.id,
+  )
+  return id ? nodes[id] : undefined
+}
+
 // The binding belongs to the placed item ID, outside the graph and clipboard.
 export function layoutDocument(scene, bindings) {
   // Pascal's autosave omits this transient flag. Plugin IDs travel in installedPlugins.
   const { hasExplicitPluginInstallState: _editorFlag, ...savedScene } = scene
+  const lamp = findBoundLamp(scene.nodes, bindings)
   return {
     version: 1,
     id: layoutId,
     scene: savedScene,
-    bindings: Object.fromEntries(Object.entries(bindings).filter(([id]) => scene.nodes[id]?.type === 'item')),
+    bindings: lamp ? { [lamp.id]: bindings[lamp.id] } : {},
   }
 }

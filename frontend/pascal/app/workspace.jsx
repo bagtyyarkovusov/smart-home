@@ -1,12 +1,12 @@
 import { ItemNode, loadPlugin, sceneRegistry, useLiveNodeOverrides, useScene } from '@pascal-app/core'
-import { activateCatalogItem, applySceneGraphToEditor, cancelActiveTool, Editor, getSavedSceneDocument, isViewVisible, openEditorView, selectWallDrawVariant, useEditor, useFloorplanRender, useSelection } from '@pascal-app/editor'
+import { activateCatalogItem, applySceneGraphToEditor, cancelActiveTool, Editor, getSavedSceneDocument, isTypingTarget, isViewVisible, openEditorView, selectWallDrawVariant, useEditor, useFloorplanRender, useSelection } from '@pascal-app/editor'
 import { builtinPlugin } from '@pascal-app/nodes'
 import { configureViewer, setSlotDefaultOverrides, useViewer } from '@pascal-app/viewer'
 import { Html } from '@react-three/drei'
 import { createPortal, useFrame } from '@react-three/fiber'
 import { createContext, useCallback, useContext, useEffect, useRef, useState } from 'react'
 import { filterFurniture, floorLamp, furnitureById, furnitureCategories } from './furniture-catalog.mjs'
-import { deviceId, importWeek13Layout, layoutDocument, layoutId, proceduralFloorLamp, startingScene } from './scene.mjs'
+import { deviceId, findBoundLamp, importWeek13Layout, layoutDocument, layoutId, proceduralFloorLamp, startingScene } from './scene.mjs'
 import { api, useLamp } from './use-lamp'
 
 const endpoint = `${api}/api/layouts/${layoutId}/pascal`
@@ -72,12 +72,22 @@ function selectPlacedItem(id, event) {
   useViewer.getState().setSelection({ zoneId: null, selectedIds: [id] })
 }
 
+function cancelDrawing() {
+  const editor = useEditor.getState()
+  if (editor.mode !== 'build' || editor.tool !== 'wall') return
+  if (cancelActiveTool()) editor.setTool(null)
+}
+
+function clearCatalogItem(asset) {
+  const editor = useEditor.getState()
+  if (editor.selectedItem?.id === asset.id) editor.setSelectedItem(null)
+}
+
 function LayoutTools() {
   const {
-    loading, hasPlan, boundItem, armedAsset, placementStatus,
+    loading, hasPlan, boundItem, armedAsset, placementStatus, panel, setPanel,
     drawWalls, startPlacement, cancelPlacement, placeAt,
   } = useContext(LayoutToolsContext)
-  const [panel, setPanel] = useState('Draw')
   const [search, setSearch] = useState('')
   const [category, setCategory] = useState('')
   const [templateId, setTemplateId] = useState(null)
@@ -109,6 +119,7 @@ function LayoutTools() {
       {['Draw', 'Catalog'].map((name) => <button key={name} type="button" aria-pressed={panel === name}
         onClick={() => {
           if (name === 'Draw') cancelPlacement()
+          else cancelDrawing()
           setPanel(name)
         }}>{name}</button>)}
     </div>
@@ -237,6 +248,7 @@ function LampScene({ item, state }) {
 function DemoEditor() {
   const wallMode = useViewer((viewer) => viewer.wallMode)
   const lamp = useLamp()
+  // Keep deleted bindings in memory so Pascal's undo can restore the same ID.
   const [bindings, setBindings] = useState({})
   const bindingRef = useRef({})
   const writes = useRef(Promise.resolve())
@@ -246,9 +258,10 @@ function DemoEditor() {
   const importInput = useRef(null)
   const placement = useRef(null)
   const [placementStatus, setPlacementStatus] = useState('')
+  const [panel, setPanel] = useState('Draw')
   const [loading, setLoading] = useState(true)
   const { selectedNode } = useSelection()
-  const boundItem = useScene((scene) => scene.nodes[Object.keys(bindings)[0]])
+  const boundItem = useScene((scene) => findBoundLamp(scene.nodes, bindings))
   const boundItemId = boundItem?.id
   const boundAssetSrc = boundItem?.asset.src
   const hasRoom = useScene((scene) => Object.values(scene.nodes).some((node) => node.type === 'zone'))
@@ -267,6 +280,19 @@ function DemoEditor() {
     bindingRef.current = next
     setBindings(next)
   }
+
+  useEffect(() => {
+    function openCatalog(event) {
+      if (event.key !== 'f' || event.metaKey || event.ctrlKey || event.altKey ||
+          event.defaultPrevented || isTypingTarget(event.target)) return
+      event.preventDefault()
+      cancelDrawing()
+      useEditor.getState().setActiveSidebarPanel(sidebarTabs[0].id)
+      setPanel('Catalog')
+    }
+    window.addEventListener('keydown', openCatalog, true)
+    return () => window.removeEventListener('keydown', openCatalog, true)
+  }, [])
 
   useEffect(() => {
     if (boundAssetSrc !== floorLamp.src) return
@@ -319,6 +345,8 @@ function DemoEditor() {
 
   function drawWalls(variant) {
     cancelPlacement()
+    cancelDrawing()
+    setPanel('Draw')
     openEditorView('2d')
     selectWallDrawVariant(variant)
     useEditor.getState().setTool('wall')
@@ -326,7 +354,7 @@ function DemoEditor() {
 
   function canPlace(asset) {
     return !loading && (asset.id !== floorLamp.id ||
-      !Object.keys(bindingRef.current).some((id) => useScene.getState().nodes[id]?.type === 'item'))
+      !findBoundLamp(useScene.getState().nodes, bindingRef.current))
   }
 
   function cancelPlacement() {
@@ -337,6 +365,7 @@ function DemoEditor() {
     if (editor.mode === 'build' && editor.tool === 'item' && editor.selectedItem?.id === asset.id) {
       cancelActiveTool()
     }
+    clearCatalogItem(asset)
     setPlacementStatus('Placement canceled.')
   }
 
@@ -353,7 +382,7 @@ function DemoEditor() {
   }
 
   function bindLamp(item) {
-    updateBindings({ [item.id]: deviceId })
+    updateBindings({ ...bindingRef.current, [item.id]: deviceId })
     setSaveStatus('pending')
   }
 
@@ -393,6 +422,7 @@ function DemoEditor() {
       return
     }
     placement.current = null
+    clearCatalogItem(intent.asset)
     // Pascal selects the committed node before exiting its once-only tool.
     if (mode === 'select' && selectedNode?.type === 'item' &&
         selectedNode.asset.id === intent.asset.id && !intent.previousNodes[selectedNode.id]) {
@@ -472,8 +502,9 @@ function DemoEditor() {
       </li></ul> : <span>No linked devices</span>}
       {importError && <span role="alert">{importError}</span>}
     </section>
-    <div className="pascal-stage" onDragOver={acceptFurnitureDrop} onDrop={acceptFurnitureDrop}>
-      <LayoutToolsContext.Provider value={{ loading, hasPlan, boundItem, armedAsset, placementStatus, drawWalls, startPlacement, cancelPlacement, placeAt }}>
+    <div className="pascal-stage" data-place-lamp-on-plan={armedAsset?.id === floorLamp.id || undefined}
+      onDragOver={acceptFurnitureDrop} onDrop={acceptFurnitureDrop}>
+      <LayoutToolsContext.Provider value={{ loading, hasPlan, boundItem, armedAsset, placementStatus, panel, setPanel, drawWalls, startPlacement, cancelPlacement, placeAt }}>
         <Editor
           projectId={layoutId}
           layoutVersion="v2"
@@ -484,8 +515,8 @@ function DemoEditor() {
           onSave={save}
           onSaveStatusChange={setSaveStatus}
           onLoaderChange={setLoading}
-          inspectorFooter={bindings[selectedNode?.id] && <PowerControls item={selectedNode}
-            device={bindings[selectedNode.id]} lamp={lamp} />}
+          inspectorFooter={boundItem && selectedNode?.id === boundItem.id && <PowerControls item={boundItem}
+            device={bindings[boundItem.id]} lamp={lamp} />}
           floorplanSceneSlot={boundItem && <LampPlan item={boundItem} state={lamp.state} />}
           viewerSceneSlot={<>
             {hasRoom && <>
