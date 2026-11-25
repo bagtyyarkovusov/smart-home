@@ -11,6 +11,7 @@ from fastapi.responses import JSONResponse
 from starlette.convertors import PathConvertor, register_url_convertor
 from starlette.websockets import WebSocket, WebSocketDisconnect
 
+from app.command_logging import log_command
 from app.control import CommandService, UnknownDeviceError
 from app.device import SimulatedLamp
 from app.domain import CommandIntent
@@ -194,9 +195,14 @@ def create_app(
                     }
                 },
             )
+        command = acceptance.command.as_dict()
+        log_command(
+            "command.accepted" if acceptance.created else "command.replayed",
+            command,
+        )
         return JSONResponse(
             status_code=202 if acceptance.created else 200,
-            content=acceptance.command.as_dict(),
+            content=command,
         )
 
     @application.get("/api/devices/{device_id}/commands/{request_id:request_id}")
@@ -220,11 +226,20 @@ def create_app(
         queue = await events.subscribe()
 
         async def send_events(cancel_scope: CancelScope) -> None:
-            try:
-                while True:
-                    await websocket.send_json(await queue.get())
-            except WebSocketDisconnect:
-                cancel_scope.cancel()
+            while True:
+                event = await queue.get()
+                try:
+                    await websocket.send_json(event)
+                except WebSocketDisconnect as error:
+                    if "command" in event:
+                        log_command(
+                            "command.websocket_send_failed",
+                            event["command"],
+                            revision=event["revision"],
+                            error=error,
+                        )
+                    cancel_scope.cancel()
+                    return
 
         try:
             state = store.get_device_state("lamp-7")
