@@ -1,0 +1,75 @@
+[
+  {
+    "id": "floor-lamp",
+    "name": "Floor lamp",
+    "category": "Lighting",
+    "dimensions": [0.4, 1.2, 0.2],
+    "src": "/models/linen-floor-lamp.glb",
+    "thumbnail": "/thumbnails/floor-lamp.webp",
+    "scale": [1, 1, 1],
+    "tags": ["linen", "floor lamp"]
+  },
+  {
+    "id": "lounge-chair",
+    "name": "Lounge chair",
+    "category": "Seating",
+    "dimensions": [1, 1.17, 1.19],
+    "src": "/models/lounge-chair.glb",
+    "thumbnail": "/thumbnails/lounge-chair.webp",
+    "tags": ["upholstered", "mid-century"]
+  },
+  {
+    "id": "coffee-table",
+    "name": "Coffee table",
+    "category": "Tables",
+    "dimensions": [1.2, 0.39, 0.6],
+    "src": "/models/coffee-table.glb",
+    "thumbnail": "/thumbnails/coffee-table.webp",
+    "tags": ["wood", "living room"]
+  },
+  {
+    "id": "rug",
+    "name": "Rug",
+    "category": "Decor",
+    "dimensions": [2.6, 0.016, 1.8],
+    "src": "/models/rug.glb",
+    "thumbnail": "/thumbnails/rug.webp",
+    "tags": ["textile"]
+  },
+  {
+    "id": "potted-plant",
+    "name": "Potted plant",
+    "category": "Decor",
+    "dimensions": [0.17, 0.27, 0.19],
+    "src": "/models/potted-plant.glb",
+    "thumbnail": "/thumbnails/potted-plant.webp",
+    "tags": ["plant", "planter"]
+  },
+  {
+    "id": "stool",
+    "name": "Stool",
+    "category": "Seating",
+    "dimensions": [0.48, 0.45, 0.48],
+    "src": "/models/stool.glb",
+    "thumbnail": "/thumbnails/stool.webp",
+    "tags": ["wood", "backless"]
+  },
+  {
+    "id": "bench",
+    "name": "Bench",
+    "category": "Seating",
+    "dimensions": [1.2, 0.46, 0.4],
+    "src": "/models/bench.glb",
+    "thumbnail": "/thumbnails/bench.webp",
+    "tags": ["wood", "slatted"]
+  },
+  {
+    "id": "ceramic-vase",
+    "name": "Ceramic vase",
+    "category": "Decor",
+    "dimensions": [0.24, 0.32, 0.24],
+    "src": "/models/ceramic-vase.glb",
+    "thumbnail": "/thumbnails/ceramic-vase.webp",
+    "tags": ["ceramic"]
+  }
+]

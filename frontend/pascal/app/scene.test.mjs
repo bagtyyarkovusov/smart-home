@@ -1,7 +1,9 @@
 import assert from 'node:assert/strict'
 import { readFileSync } from 'node:fs'
 import { test } from 'node:test'
-import { importWeek13Layout, layoutDocument } from './scene.mjs'
+import { ItemNode } from '@pascal-app/core'
+import { furnitureById } from './furniture-catalog.mjs'
+import { importWeek13Layout, layoutDocument, startingScene } from './scene.mjs'
 
 const fixture = JSON.parse(readFileSync(new URL(
   '../../../docs/contracts/week-13/layout.v1.json', import.meta.url,
@@ -44,4 +46,35 @@ test('manual save and Pascal autosave persist the same scene envelope', () => {
   const autosavedScene = { ...scene, installedPlugins: [] }
   const manualScene = { ...autosavedScene, hasExplicitPluginInstallState: false }
   assert.deepEqual(layoutDocument(manualScene, bindings), layoutDocument(autosavedScene, bindings))
+})
+
+test('a saved layout keeps only the live lamp binding after replacing and restoring the lamp', () => {
+  const { scene } = importWeek13Layout(fixture)
+  const original = scene.nodes.item_imported
+  const replacement = ItemNode.parse({ ...original, id: 'item_replacement' })
+  const knownBindings = { item_imported: 'lamp-7', item_replacement: 'lamp-7' }
+
+  assert.deepEqual(layoutDocument(startingScene([replacement]), knownBindings).bindings, { item_replacement: 'lamp-7' })
+  assert.deepEqual(layoutDocument(startingScene([]), knownBindings).bindings, {})
+  assert.deepEqual(layoutDocument(scene, knownBindings).bindings, { item_imported: 'lamp-7' })
+  assert.deepEqual(layoutDocument(startingScene([original, replacement]), knownBindings).bindings, { item_imported: 'lamp-7' })
+})
+
+test('a configured vase saves its authored asset and exact transform beside the linked lamp', () => {
+  const imported = importWeek13Layout(fixture)
+  const { wall_imported: wall, item_imported: lamp } = imported.scene.nodes
+  const vase = ItemNode.parse({
+    id: 'item_vase', name: 'Ceramic vase', asset: furnitureById('ceramic-vase'),
+    parentId: 'level_demo', position: [-1.255, 0, 0.76], rotation: [0, Math.PI / 4, 0],
+  })
+  const scene = startingScene([wall, lamp, vase])
+  const saved = JSON.parse(JSON.stringify(layoutDocument(scene, imported.bindings)))
+  assert.deepEqual(saved.scene.nodes.item_vase.asset, {
+    id: 'ceramic-vase', name: 'Ceramic vase', category: 'Decor', dimensions: [0.24, 0.32, 0.24],
+    src: '/models/ceramic-vase.glb', thumbnail: '/thumbnails/ceramic-vase.webp', tags: ['ceramic'],
+    source: 'library', scale: [1, 1, 1], offset: [0, 0, 0], rotation: [0, 0, 0],
+  })
+  assert.deepEqual(saved.scene.nodes.item_vase.position, [-1.255, 0, 0.76])
+  assert.deepEqual(saved.scene.nodes.item_vase.rotation, [0, Math.PI / 4, 0])
+  assert.deepEqual(saved.bindings, { item_imported: 'lamp-7' })
 })
