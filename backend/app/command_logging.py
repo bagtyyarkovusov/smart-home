@@ -20,11 +20,12 @@ class CommandLog:
 
     def start(self) -> None:
         with self._ready:
-            if self._worker is not None and self._worker.is_alive():
-                return
             self._closed = False
-            self._worker = Thread(target=self._emit, name="command-logs", daemon=True)
-            self._worker.start()
+            if self._worker is None:
+                self._worker = Thread(
+                    target=self._emit, name="command-logs", daemon=True
+                )
+                self._worker.start()
 
     def __call__(
         self,
@@ -57,6 +58,7 @@ class CommandLog:
             with self._ready:
                 self._ready.wait_for(lambda: self._closed or self._records)
                 if not self._records:
+                    self._worker = None
                     return
                 level, fields = self._records.popleft()
             with suppress(Exception):
@@ -69,3 +71,6 @@ class CommandLog:
             worker = self._worker
         if worker is not None:
             await asyncio.to_thread(worker.join, 1)
+            with self._ready:
+                if self._closed and self._worker is worker:
+                    self._records.clear()

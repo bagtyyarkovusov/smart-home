@@ -134,6 +134,64 @@ def test_slow_or_failing_command_log_handler_does_not_change_the_outcome(
         logger.removeHandler(handler)
 
 
+def test_same_app_resumes_logging_after_a_slow_drain(
+    tmp_path: Path, caplog: pytest.LogCaptureFixture
+) -> None:
+    blocked = Event()
+    release = Event()
+
+    class BlockingHandler(logging.Handler):
+        def emit(self, record: logging.LogRecord) -> None:
+            event = json.loads(record.getMessage())
+            if (
+                event["requestId"] == "first-lifespan"
+                and event["event"] == "command.dispatched"
+            ):
+                blocked.set()
+                release.wait(timeout=5)
+
+    logger = logging.getLogger("app.commands")
+    caplog.set_level(logging.INFO, logger=logger.name)
+    handler = BlockingHandler()
+    logger.addHandler(handler)
+    app = create_app(database_path=tmp_path / "smart-home.sqlite3")
+    try:
+        for request_id, value in (("first-lifespan", True), ("second-lifespan", False)):
+            with TestClient(app) as client, client.websocket_connect("/api/ws") as ws:
+                assert ws.receive_json()["type"] == "snapshot"
+                if not value:
+                    release.set()
+                response = client.post(
+                    "/api/devices/lamp-7/commands",
+                    json={
+                        "requestId": request_id,
+                        "capability": "power",
+                        "value": value,
+                    },
+                )
+                assert response.status_code == 202
+                assert ws.receive_json()["type"] == "command.succeeded"
+                if value:
+                    assert blocked.wait(timeout=1)
+    finally:
+        release.set()
+        logger.removeHandler(handler)
+
+    events = [
+        json.loads(record.message)
+        for record in caplog.records
+        if record.name == "app.commands"
+    ]
+    assert [
+        event["event"] for event in events if event["requestId"] == "second-lifespan"
+    ] == [
+        "command.accepted",
+        "command.dispatched",
+        "command.terminal",
+        "command.published",
+    ]
+
+
 def test_timed_out_command_keeps_last_confirmed_state(
     tmp_path: Path, caplog: pytest.LogCaptureFixture
 ) -> None:

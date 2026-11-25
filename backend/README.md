@@ -192,7 +192,10 @@ The `app.commands` logger emits one JSON object per message. It includes the
 caller-supplied request ID, so use an opaque ID and keep secrets out of IDs.
 One background worker emits records in queue order. Under sustained sink
 backpressure, the queue retains up to 1,024 records and drops new arrivals
-when full. Shutdown allows up to one second for the worker to drain.
+when full. Application shutdown allows up to one second for the worker to
+drain, then discards records still in the queue. At process exit, Python
+waits for logging handlers to release their locks and flush. Use handlers
+that can finish or time out if their sink stops responding.
 A `command.persistence_retry` warning records the first failed terminal
 write in a retry sequence. `command.published` means Control handed the event
 to the in-process WebSocket hub, even with no subscribers. If a subscriber
