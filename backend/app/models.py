@@ -102,16 +102,8 @@ class PascalLayoutDocument(StrictModel):
             )
         ):
             raise ValueError("Each root must refer to an unparented site.")
+        parents = set(roots)
         for parent_type, child_type in (("site", "building"), ("building", "level")):
-            parents = (
-                roots
-                if parent_type == "site"
-                else [
-                    key
-                    for key, node in nodes.items()
-                    if node.get("type") == parent_type
-                ]
-            )
             expected_children = {
                 key for key, node in nodes.items() if node.get("type") == child_type
             }
@@ -132,12 +124,9 @@ class PascalLayoutDocument(StrictModel):
                         attached_children.add(child)
             if attached_children != expected_children or not expected_children:
                 raise ValueError(f"Each {child_type} must belong to a {parent_type}.")
-        for node in nodes.values():
-            if node.get("type") == "wall":
-                start = pascal_point.validate_python(node.get("start"))
-                end = pascal_point.validate_python(node.get("end"))
-                if start == end:
-                    raise ValueError("Wall endpoints must differ.")
+            parents = attached_children
+
+        wall_ids = {key for key, node in nodes.items() if node.get("type") == "wall"}
         if len(self.bindings) > 1:
             raise ValueError("Only one placed item can control lamp-7.")
         for key in self.bindings:
@@ -151,6 +140,27 @@ class PascalLayoutDocument(StrictModel):
                 raise ValueError("A binding must refer to a placed floor lamp.")
             pascal_transform.validate_python(node.get("position"))
             pascal_transform.validate_python(node.get("rotation"))
+        for key in wall_ids:
+            wall = nodes[key]
+            start = pascal_point.validate_python(wall.get("start"))
+            end = pascal_point.validate_python(wall.get("end"))
+            if start == end:
+                raise ValueError("Wall endpoints must differ.")
+
+        floor_nodes = wall_ids | self.bindings.keys()
+        attached_floor_nodes = set()
+        for level in parents:
+            children = nodes[level].get("children")
+            if not isinstance(children, list):
+                continue
+            for key in children:
+                if not isinstance(key, str) or key not in floor_nodes:
+                    continue
+                if nodes[key].get("parentId") != level or key in attached_floor_nodes:
+                    raise ValueError("Invalid wall or bound lamp attachment.")
+                attached_floor_nodes.add(key)
+        if attached_floor_nodes != floor_nodes:
+            raise ValueError("Walls and bound lamps must belong to a saved level.")
         return self
 
 

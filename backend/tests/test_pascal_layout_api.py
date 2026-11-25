@@ -87,6 +87,15 @@ def test_pascal_layout_survives_restart_beside_the_home3d_layout(tmp_path):
         invalid_wall = deepcopy(document)
         invalid_wall["scene"]["nodes"]["wall_demo"]["end"] = ["2", 0]
         assert client.put(PASCAL_PATH, json=invalid_wall).status_code == 422
+        orphaned_lamp = deepcopy(document)
+        orphaned_lamp["scene"]["nodes"]["item_demo-lamp"]["parentId"] = "level_missing"
+        rejected = client.put(PASCAL_PATH, json=orphaned_lamp)
+        assert rejected.status_code == 422
+        assert rejected.json()["error"]["code"] == "invalid_layout"
+        assert client.get(PASCAL_PATH).json() == document
+        unlisted_wall = deepcopy(document)
+        unlisted_wall["scene"]["nodes"]["level_demo"]["children"].remove("wall_demo")
+        assert client.put(PASCAL_PATH, json=unlisted_wall).status_code == 422
         assert client.get(PASCAL_PATH).json() == document
 
     with TestClient(create_app(database_path)) as client:
