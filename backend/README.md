@@ -105,6 +105,104 @@ the snapshot followed by the terminal event. To test reconnect, disconnect
 before the timeout, then reconnect and look up the timed-out command by ID.
 Frame examples live in the [Week 13 contract](../docs/contracts/week-13/README.md).
 
+## Trace a lamp command
+
+Use two POSIX terminals in `backend`. Start Uvicorn in the first terminal with
+INFO logging enabled for the application. The commands use port 8000. If it
+is occupied, substitute the same free port in the server and both client URLs.
+Run `success` first, then stop that server with Ctrl+C and repeat with
+`mode=timeout` for a deterministic timeout on a separate SQLite database.
+
+```sh
+mode=success
+demo_dir="$(mktemp -d "${TMPDIR:-/tmp}/smart-home-trace.XXXXXX")"
+printf '%s\n' "$demo_dir"
+SMART_HOME_DB_PATH="$demo_dir/$mode.sqlite3" \
+SMART_HOME_SIMULATOR_MODE="$mode" \
+SMART_HOME_SIMULATOR_DELAY_SECONDS=0 \
+SMART_HOME_COMMAND_TIMEOUT_SECONDS=1.0 \
+.venv/bin/python -c '
+import logging
+import uvicorn
+
+logging.basicConfig(level=logging.INFO, format="%(message)s")
+uvicorn.run("app.main:app", host="127.0.0.1", port=8000, workers=1, access_log=False)
+' > "$demo_dir/$mode.log" 2>&1
+```
+
+In the second terminal, set `demo_dir` to the printed path and match `mode`
+to the running server. The client subscribes before posting the fixture, then
+replays the identical POST after the terminal frame. It saves that frame for
+comparison with the logs.
+
+```sh
+mode=success
+demo_dir=/tmp/smart-home-trace.REPLACE_ME
+.venv/bin/python - "$mode" > "$demo_dir/$mode.ws.json" <<'PY'
+import json
+import sys
+from urllib.request import Request, urlopen
+
+from websockets.sync.client import connect
+
+mode = sys.argv[1]
+with open("../docs/contracts/week-13/lamp-scenarios.json") as fixtures:
+    body = json.dumps(json.load(fixtures)[mode]["request"]).encode()
+post = Request(
+    "http://127.0.0.1:8000/api/devices/lamp-7/commands",
+    data=body,
+    headers={"Content-Type": "application/json"},
+)
+with connect("ws://127.0.0.1:8000/api/ws") as ws:
+    assert json.loads(ws.recv(timeout=5))["type"] == "snapshot"
+    with urlopen(post, timeout=5) as accepted:
+        assert accepted.status == 202
+        assert json.load(accepted)["status"] == "pending"
+    frame = json.loads(ws.recv(timeout=5))
+    assert frame["type"] == {"success": "command.succeeded",
+                             "timeout": "command.timed_out"}[mode]
+    with urlopen(post, timeout=5) as replay:
+        assert replay.status == 200
+        assert json.load(replay) == frame["command"]
+    print(json.dumps(frame))
+PY
+```
+
+Stop the server in the first terminal with Ctrl+C so the log worker has time
+to drain. Then compare the saved client frame with the server records.
+
+```sh
+jq -Rc --slurpfile ws "$demo_dir/$mode.ws.json" \
+  'fromjson? | select(.requestId == $ws[0].command.requestId)' \
+  "$demo_dir/$mode.log" | tee "$demo_dir/$mode.trace.jsonl"
+jq -es --slurpfile ws "$demo_dir/$mode.ws.json" '
+  map(.event) == ["command.accepted", "command.dispatched", "command.terminal",
+                  "command.published", "command.replayed"]
+  and (.[2:4] | all(.revision == $ws[0].revision and .status == $ws[0].command.status))
+' "$demo_dir/$mode.trace.jsonl"
+```
+
+The final check prints `true` for each run. The `revision` on terminal and
+publication records is the persisted **stream** revision. In a timeout, the
+lamp's confirmed state keeps its previous revision. A replay returns the
+stored command status, which can still be pending if retried before completion.
+Use the terminal and publication records to find the command's stream revision.
+
+The `app.commands` logger emits one JSON object per message. It includes the
+caller-supplied request ID, so use an opaque ID and keep secrets out of IDs.
+One background worker emits records in queue order. Under sustained sink
+backpressure, the queue retains up to 1,024 records and drops new arrivals
+when full. Application shutdown allows up to one second for the worker to
+drain, then discards records still in the queue. At process exit, Python
+waits for logging handlers to release their locks and flush. Use handlers
+that can finish or time out if their sink stops responding.
+A `command.persistence_retry` warning records the first failed terminal
+write in a retry sequence. `command.published` means Control handed the event
+to the in-process WebSocket hub, even with no subscribers. If a subscriber
+disconnects during a send, `command.websocket_send_failed` records the affected
+command and revision. Delivery recovery happens through a fresh snapshot and
+command lookup on reconnect.
+
 ## Manual command Strategy
 
 The command POST route passes the validated On or Off intent to

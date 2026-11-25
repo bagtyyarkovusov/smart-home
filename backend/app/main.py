@@ -66,8 +66,8 @@ def create_app(
 
     @asynccontextmanager
     async def lifespan(_application: FastAPI):
-        await commands.recover_pending()
         try:
+            await commands.recover_pending()
             yield
         finally:
             await commands.shutdown()
@@ -194,9 +194,10 @@ def create_app(
                     }
                 },
             )
+        command = acceptance.command.as_dict()
         return JSONResponse(
             status_code=202 if acceptance.created else 200,
-            content=acceptance.command.as_dict(),
+            content=command,
         )
 
     @application.get("/api/devices/{device_id}/commands/{request_id:request_id}")
@@ -220,11 +221,20 @@ def create_app(
         queue = await events.subscribe()
 
         async def send_events(cancel_scope: CancelScope) -> None:
-            try:
-                while True:
-                    await websocket.send_json(await queue.get())
-            except WebSocketDisconnect:
-                cancel_scope.cancel()
+            while True:
+                event = await queue.get()
+                try:
+                    await websocket.send_json(event)
+                except WebSocketDisconnect as error:
+                    if "command" in event:
+                        commands.command_log(
+                            "command.websocket_send_failed",
+                            event["command"],
+                            revision=event["revision"],
+                            error=error,
+                        )
+                    cancel_scope.cancel()
+                    return
 
         try:
             state = store.get_device_state("lamp-7")

@@ -1,8 +1,12 @@
+import json
+import logging
 import time
 from pathlib import Path
+from threading import Event
 
 import pytest
 from fastapi.testclient import TestClient
+from starlette.types import Message, Receive, Scope, Send
 
 from app.main import create_app
 from app.persistence import SqliteStore
@@ -78,7 +82,120 @@ def test_power_on_command_succeeds_and_publishes_confirmed_state(
         )
 
 
-def test_timed_out_command_keeps_last_confirmed_state(tmp_path: Path) -> None:
+def test_slow_or_failing_command_log_handler_does_not_change_the_outcome(
+    tmp_path: Path, caplog: pytest.LogCaptureFixture
+) -> None:
+    release = Event()
+    dispatch_log_started = Event()
+    publication_logged = Event()
+
+    class SlowAndFailingHandler(logging.Handler):
+        def emit(self, record: logging.LogRecord) -> None:
+            event = json.loads(record.getMessage())["event"]
+            if event == "command.dispatched":
+                dispatch_log_started.set()
+                release.wait(timeout=0.5)
+            elif event == "command.terminal":
+                raise OSError("log sink unavailable")
+            elif event == "command.published":
+                publication_logged.set()
+
+    logger = logging.getLogger("app.commands")
+    handler = SlowAndFailingHandler()
+    caplog.set_level(logging.INFO, logger=logger.name)
+    logger.addHandler(handler)
+    try:
+        with (
+            TestClient(
+                create_app(
+                    database_path=tmp_path / "smart-home.sqlite3",
+                    command_timeout_seconds=0.1,
+                )
+            ) as client,
+            client.websocket_connect("/api/ws") as socket,
+        ):
+            assert socket.receive_json()["type"] == "snapshot"
+            try:
+                response = client.post(
+                    "/api/devices/lamp-7/commands",
+                    json={
+                        "requestId": "slow-log",
+                        "capability": "power",
+                        "value": True,
+                    },
+                )
+                assert response.status_code == 202
+                assert socket.receive_json()["type"] == "command.succeeded"
+                assert dispatch_log_started.wait(timeout=1)
+            finally:
+                release.set()
+            assert publication_logged.wait(timeout=1)
+    finally:
+        logger.removeHandler(handler)
+
+
+def test_same_app_resumes_logging_after_a_slow_drain(
+    tmp_path: Path, caplog: pytest.LogCaptureFixture
+) -> None:
+    blocked = Event()
+    release = Event()
+
+    class BlockingHandler(logging.Handler):
+        def emit(self, record: logging.LogRecord) -> None:
+            event = json.loads(record.getMessage())
+            if (
+                event["requestId"] == "first-lifespan"
+                and event["event"] == "command.dispatched"
+            ):
+                blocked.set()
+                release.wait(timeout=5)
+
+    logger = logging.getLogger("app.commands")
+    caplog.set_level(logging.INFO, logger=logger.name)
+    handler = BlockingHandler()
+    logger.addHandler(handler)
+    app = create_app(database_path=tmp_path / "smart-home.sqlite3")
+    try:
+        for request_id, value in (("first-lifespan", True), ("second-lifespan", False)):
+            with TestClient(app) as client, client.websocket_connect("/api/ws") as ws:
+                assert ws.receive_json()["type"] == "snapshot"
+                if not value:
+                    release.set()
+                response = client.post(
+                    "/api/devices/lamp-7/commands",
+                    json={
+                        "requestId": request_id,
+                        "capability": "power",
+                        "value": value,
+                    },
+                )
+                assert response.status_code == 202
+                assert ws.receive_json()["type"] == "command.succeeded"
+                if value:
+                    assert blocked.wait(timeout=1)
+    finally:
+        release.set()
+        logger.removeHandler(handler)
+
+    events = [
+        json.loads(record.message)
+        for record in caplog.records
+        if record.name == "app.commands"
+    ]
+    assert [
+        event["event"] for event in events if event["requestId"] == "second-lifespan"
+    ] == [
+        "command.accepted",
+        "command.dispatched",
+        "command.terminal",
+        "command.published",
+    ]
+
+
+def test_timed_out_command_keeps_last_confirmed_state(
+    tmp_path: Path, caplog: pytest.LogCaptureFixture
+) -> None:
+    caplog.set_level(logging.INFO, logger="app.commands")
     request = {"requestId": "power-on-2", "capability": "power", "value": True}
     with TestClient(
         create_app(
@@ -118,11 +235,28 @@ def test_timed_out_command_keeps_last_confirmed_state(tmp_path: Path) -> None:
                 "state": INITIAL_STATE,
             }
 
+    records = [
+        json.loads(record.message)
+        for record in caplog.records
+        if record.name == "app.commands"
+    ]
+    assert [record["event"] for record in records] == [
+        "command.accepted",
+        "command.dispatched",
+        "command.terminal",
+        "command.published",
+    ]
+    for record in records[-2:]:
+        assert record["revision"] == event["revision"]
+        assert record["status"] == "timed_out"
+
 
 def test_repeated_request_returns_existing_command_without_second_dispatch(
-    tmp_path: Path,
+    tmp_path: Path, caplog: pytest.LogCaptureFixture
 ) -> None:
-    request = {"requestId": "power-on-repeat", "capability": "power", "value": True}
+    caplog.set_level(logging.INFO, logger="app.commands")
+    request_id = 'power/on\n"雪"\x1b'
+    request = {"requestId": request_id, "capability": "power", "value": True}
     with TestClient(
         create_app(
             database_path=tmp_path / "smart-home.sqlite3",
@@ -152,6 +286,80 @@ def test_repeated_request_returns_existing_command_without_second_dispatch(
         different_target = client.post("/api/devices/other-lamp/commands", json=request)
         assert different_target.status_code == 409
         assert different_target.json()["error"]["code"] == "request_id_conflict"
+
+    messages = [
+        record.message for record in caplog.records if record.name == "app.commands"
+    ]
+    assert all(
+        message.isascii() and len(message.splitlines()) == 1 for message in messages
+    )
+    identity = {"requestId": request_id, "deviceId": "lamp-7", "capability": "power"}
+    assert [json.loads(message) for message in messages] == [
+        {**identity, "event": "command.accepted", "status": "pending"},
+        {**identity, "event": "command.dispatched", "status": "pending"},
+        {
+            **identity,
+            "event": "command.terminal",
+            "status": "succeeded",
+            "revision": event["revision"],
+        },
+        {
+            **identity,
+            "event": "command.published",
+            "status": "succeeded",
+            "revision": event["revision"],
+        },
+        {**identity, "event": "command.replayed", "status": "succeeded"},
+    ]
+
+
+def test_websocket_send_failure_retains_persisted_command_context(
+    tmp_path: Path, caplog: pytest.LogCaptureFixture
+) -> None:
+    app = create_app(database_path=tmp_path / "smart-home.sqlite3")
+    disconnected = Event()
+    request = {"requestId": "send-failed", "capability": "power", "value": True}
+    route = "/api/devices/lamp-7/commands"
+
+    async def disconnect_after_snapshot(
+        scope: Scope, receive: Receive, send: Send
+    ) -> None:
+        async def send_until_terminal(message: Message) -> None:
+            if (
+                message["type"] == "websocket.send"
+                and json.loads(message["text"])["type"] == "command.succeeded"
+            ):
+                raise OSError("private transport details")
+            await send(message)
+
+        await app(scope, receive, send_until_terminal)
+        if scope["type"] == "websocket":
+            disconnected.set()
+
+    with (
+        TestClient(disconnect_after_snapshot) as client,
+        client.websocket_connect("/api/ws") as websocket,
+    ):
+        assert websocket.receive_json()["type"] == "snapshot"
+        assert client.post(route, json=request).status_code == 202
+        assert disconnected.wait(timeout=2)
+        assert client.get(f"{route}/send-failed").json()["status"] == "succeeded"
+
+    assert [
+        json.loads(record.message)
+        for record in caplog.records
+        if record.name == "app.commands"
+    ] == [
+        {
+            "event": "command.websocket_send_failed",
+            "requestId": "send-failed",
+            "deviceId": "lamp-7",
+            "capability": "power",
+            "status": "succeeded",
+            "revision": 1,
+            "errorType": "WebSocketDisconnect",
+        }
+    ]
 
 
 def test_invalid_and_unknown_command_inputs_have_contract_errors(

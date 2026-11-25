@@ -1,4 +1,5 @@
 import asyncio
+import json
 import sqlite3
 from contextlib import closing
 from pathlib import Path
@@ -44,6 +45,7 @@ def test_terminal_write_failure_recovers_without_redispatch(
     write: str,
     release_after_deadline: bool,
     expected_status: str,
+    caplog: pytest.LogCaptureFixture,
 ) -> None:
     store = SqliteStore(tmp_path / "smart-home.sqlite3")
     store.initialize()
@@ -54,6 +56,7 @@ def test_terminal_write_failure_recovers_without_redispatch(
     plan = CommandPlan("lamp-7", "retry", "power", True)
 
     async def run() -> None:
+        await control.recover_pending()
         queue = await events.subscribe()
         with closing(sqlite3.connect(store.database_path)) as connection:
             connection.executescript(
@@ -96,6 +99,21 @@ def test_terminal_write_failure_recovers_without_redispatch(
             assert history == []
 
     asyncio.run(run())
+    warnings = [
+        json.loads(record.message)
+        for record in caplog.records
+        if record.name == "app.commands"
+    ]
+    assert warnings == [
+        {
+            "event": "command.persistence_retry",
+            "requestId": "retry",
+            "deviceId": "lamp-7",
+            "capability": "power",
+            "status": "pending",
+            "errorType": "IntegrityError",
+        }
+    ]
 
 
 def test_later_confirmation_cannot_overtake_earlier_write_retry(tmp_path: Path) -> None:

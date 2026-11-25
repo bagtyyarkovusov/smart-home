@@ -1,15 +1,13 @@
 import asyncio
-import logging
 import sqlite3
 import time
 from datetime import UTC, datetime
 
+from app.command_logging import CommandLog
 from app.device import SimulatedLamp
-from app.domain import CommandAcceptance, CommandPlan
+from app.domain import CommandAcceptance, CommandPlan, CommandRecord
 from app.persistence import SqliteStore
 from app.realtime import EventHub
-
-logger = logging.getLogger(__name__)
 
 
 class InvalidCommandPlanError(ValueError):
@@ -32,6 +30,7 @@ class CommandService:
         self.device = device
         self.events = events
         self.timeout_seconds = timeout_seconds
+        self.command_log = CommandLog()
         self._tasks: set[asyncio.Task[None]] = set()
         self._confirmation_writes = asyncio.Lock()
 
@@ -52,15 +51,22 @@ class CommandService:
             value=plan.value,
             deadline_epoch=deadline_epoch,
         )
+        self.command_log(
+            "command.accepted" if acceptance.created else "command.replayed",
+            acceptance.command.as_dict(),
+        )
         if acceptance.created:
-            self._track(asyncio.create_task(self._apply(plan, deadline_epoch)))
+            self._track(
+                asyncio.create_task(
+                    self._apply(plan, acceptance.command, deadline_epoch)
+                )
+            )
         return acceptance
 
     async def recover_pending(self) -> None:
+        self.command_log.start()
         for command, deadline_epoch in self.store.pending_commands():
-            self._track(
-                asyncio.create_task(self._finish(command.request_id, deadline_epoch))
-            )
+            self._track(asyncio.create_task(self._finish(command, deadline_epoch)))
         # Give expired commands one write attempt before startup completes.
         await asyncio.sleep(0)
 
@@ -73,12 +79,19 @@ class CommandService:
         for task in tasks:
             task.cancel()
         await asyncio.gather(*tasks, return_exceptions=True)
+        await self.command_log.close()
 
-    async def _apply(self, plan: CommandPlan, deadline_epoch: float) -> None:
+    async def _dispatch(self, plan: CommandPlan, command: CommandRecord) -> bool:
+        self.command_log("command.dispatched", command.as_dict())
+        return await self.device.apply(plan)
+
+    async def _apply(
+        self, plan: CommandPlan, command: CommandRecord, deadline_epoch: float
+    ) -> None:
         confirmed_at = None
         try:
             confirmed_value = await asyncio.wait_for(
-                self.device.apply(plan),
+                self._dispatch(plan, command),
                 timeout=max(0.0, deadline_epoch - time.time()),
             )
         except TimeoutError:
@@ -92,16 +105,16 @@ class CommandService:
                 confirmed_at = _utc_timestamp(received_at)
 
         if confirmed_at is None:
-            await self._finish(plan.request_id, deadline_epoch)
+            await self._finish(command, deadline_epoch)
             return
 
         # Write and publish confirmations for the simulated lamp in arrival order.
         async with self._confirmation_writes:
-            await self._finish(plan.request_id, deadline_epoch, confirmed_at)
+            await self._finish(command, deadline_epoch, confirmed_at)
 
     async def _finish(
         self,
-        request_id: str,
+        command: CommandRecord,
         deadline_epoch: float,
         confirmed_at: str | None = None,
     ) -> None:
@@ -114,20 +127,31 @@ class CommandService:
 
             try:
                 if confirmed_at is not None:
-                    outcome = self.store.commit_success(request_id, confirmed_at)
+                    outcome = self.store.commit_success(
+                        command.request_id, confirmed_at
+                    )
                 else:
-                    outcome = self.store.commit_timed_out(request_id)
-            except (sqlite3.OperationalError, sqlite3.IntegrityError):
+                    outcome = self.store.commit_timed_out(command.request_id)
+            except (sqlite3.OperationalError, sqlite3.IntegrityError) as error:
                 if retry_delay == 0.01:
-                    logger.warning(
-                        "Command outcome write failed; retrying.", exc_info=True
+                    self.command_log(
+                        "command.persistence_retry",
+                        command.as_dict(),
+                        error=error,
                     )
                 await asyncio.sleep(retry_delay)
                 retry_delay = min(2 * retry_delay, 1.0)
                 continue
 
             if outcome is not None:
-                await self.events.publish(outcome.event)
+                event = outcome.event
+                self.command_log(
+                    "command.terminal", event["command"], revision=event["revision"]
+                )
+                await self.events.publish(event)
+                self.command_log(
+                    "command.published", event["command"], revision=event["revision"]
+                )
             return
 
 
