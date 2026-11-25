@@ -21,6 +21,7 @@ test('the Week 13 import retains identities and floor transforms in a saved Pasc
   assert.deepEqual(lamp.position, [1.2, 0, 0.8])
   assert.deepEqual(lamp.rotation, [0, -Math.PI / 6, 0])
   assert.equal(lamp.asset.id, 'floor-lamp')
+  assert.equal(lamp.asset.src, '/models/floor-lamp.glb')
   assert.deepEqual(reopened.bindings, { item_imported: 'lamp-7' })
 })
 
